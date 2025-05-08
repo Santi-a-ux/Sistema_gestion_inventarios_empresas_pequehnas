@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Producto - Sistema de Inventario{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title mb-0">Editar Producto</h2>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('editar_producto', id=producto.id) }}">
+                    <div class="mb-3">
+                        <label for="nombre" class="form-label">Nombre del Producto *</label>
+                        <input type="text" class="form-control" id="nombre" name="nombre" value="{{ producto.nombre }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="descripcion" class="form-label">Descripción</label>
+                        <textarea class="form-control" id="descripcion" name="descripcion" rows="3">{{ producto.descripcion or '' }}</textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="cantidad" class="form-label">Cantidad Actual</label>
+                        <input type="number" class="form-control" id="cantidad" name="cantidad" value="{{ producto.cantidad }}" min="0">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="umbral_reorden" class="form-label">Umbral de Reorden</label>
+                        <input type="number" class="form-control" id="umbral_reorden" name="umbral_reorden" value="{{ producto.umbral_reorden }}" min="0">
+                        <div class="form-text">Se mostrará una alerta cuando la cantidad llegue a este número o menos.</div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">Actualizar Producto</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
