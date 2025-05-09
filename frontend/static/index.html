@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Inventario</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- Login Form (shown when not authenticated) -->
+    <div id="loginContainer" class="container mt-5" style="display: none;">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="text-center">Iniciar Sesión</h3>
+                    </div>
+                    <div class="card-body">
+                        <form id="loginForm">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Usuario</label>
+                                <input type="text" class="form-control" id="username" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="password" class="form-label">Contraseña</label>
+                                <input type="password" class="form-control" id="password" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">Ingresar</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App (shown when authenticated) -->
+    <div id="appContainer" style="display: none;">
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container">
+                <a class="navbar-brand" href="/">Sistema de Inventario</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-section="inventario">Inventario</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-section="categorias">Categorías</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-section="proveedores">Proveedores</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-section="ordenes-compra">Órdenes de Compra</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-section="reportes">Reportes</a>
+                        </li>
+                    </ul>
+                    <ul class="navbar-nav">
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-person-circle"></i> <span id="currentUser"></span>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="#" id="btnLogout">Cerrar Sesión</a></li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container mt-4">
+            <div id="alertContainer"></div>
+
+            <!-- Inventario Section -->
+            <div id="inventarioSection" class="section">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1>Inventario</h1>
+                    <div>
+                        <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#importarCSVModal">
+                            <i class="bi bi-file-earmark-arrow-up"></i> Importar CSV
+                        </button>
+                        <button class="btn btn-info me-2" id="btnExportarCSV">
+                            <i class="bi bi-file-earmark-arrow-down"></i> Exportar CSV
+                        </button>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nuevoProductoModal">
+                            <i class="bi bi-plus-circle"></i> Nuevo Producto
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search and Filter -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <input type="text" class="form-control" id="searchNombre" placeholder="Buscar por nombre...">
+                            </div>
+                            <div class="col-md-4">
+                                <input type="text" class="form-control" id="searchSKU" placeholder="Buscar por SKU...">
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-select" id="searchCategoria">
+                                    <option value="">Todas las categorías</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>SKU</th>
+                                <th>Nombre</th>
+                                <th>Categoría</th>
+                                <th>Precio Costo</th>
+                                <th>Precio Venta</th>
+                                <th>Cantidad</th>
+                                <th>Umbral</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productosTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Categorías Section -->
+            <div id="categoriasSection" class="section" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1>Categorías</h1>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nuevaCategoriaModal">
+                        <i class="bi bi-plus-circle"></i> Nueva Categoría
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nombre</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="categoriasTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Proveedores Section -->
+            <div id="proveedoresSection" class="section" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1>Proveedores</h1>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nuevoProveedorModal">
+                        <i class="bi bi-plus-circle"></i> Nuevo Proveedor
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nombre</th>
+                                <th>Email</th>
+                                <th>Teléfono</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="proveedoresTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Órdenes de Compra Section -->
+            <div id="ordenes-compraSection" class="section" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1>Órdenes de Compra</h1>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nuevaOrdenCompraModal">
+                        <i class="bi bi-plus-circle"></i> Nueva Orden
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Proveedor</th>
+                                <th>Fecha Creación</th>
+                                <th>Fecha Entrega</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ordenesCompraTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Reportes Section -->
+            <div id="reportesSection" class="section" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1>Reportes</h1>
+                </div>
+                
+                <!-- Inventario Valorado -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Inventario Valorado</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Producto</th>
+                                        <th>Cantidad</th>
+                                        <th>Precio Costo</th>
+                                        <th>Valor Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inventarioValoradoBody"></tbody>
+                                <tfoot>
+                                    <tr>
+                                        <th colspan="3">Total Inventario</th>
+                                        <th id="totalInventario"></th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ventas/Uso -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Reporte de Ventas/Uso</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Fecha Inicio</label>
+                                <input type="date" class="form-control" id="fechaInicio">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Fecha Fin</label>
+                                <input type="date" class="form-control" id="fechaFin">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">&nbsp;</label>
+                                <button class="btn btn-primary d-block" id="btnGenerarReporte">
+                                    Generar Reporte
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Producto</th>
+                                        <th>Tipo</th>
+                                        <th>Cantidad</th>
+                                        <th>Usuario</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ventasUsoBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modals -->
+        <!-- Nuevo Producto Modal -->
+        <div class="modal fade" id="nuevoProductoModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form id="nuevoProductoForm">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Nuevo Producto</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="nombre" class="form-label">Nombre del Producto *</label>
+                                <input type="text" class="form-control" id="nombre" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="sku" class="form-label">SKU *</label>
+                                <input type="text" class="form-control" id="sku" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="categoria" class="form-label">Categoría</label>
+                                <select class="form-select" id="categoria">
+                                    <option value="">Sin categoría</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="precio_costo" class="form-label">Precio de Costo *</label>
+                                <input type="number" class="form-control" id="precio_costo" step="0.01" min="0" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="precio_venta" class="form-label">Precio de Venta *</label>
+                                <input type="number" class="form-control" id="precio_venta" step="0.01" min="0" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="descripcion" class="form-label">Descripción</label>
+                                <textarea class="form-control" id="descripcion" rows="3"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="cantidad" class="form-label">Cantidad Inicial</label>
+                                <input type="number" class="form-control" id="cantidad" value="0" min="0">
+                            </div>
+                            <div class="mb-3">
+                                <label for="umbral_reorden" class="form-label">Umbral de Reorden</label>
+                                <input type="number" class="form-control" id="umbral_reorden" value="10" min="0">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Editar Producto Modal -->
+        <div class="modal fade" id="editarProductoModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form id="editarProductoForm">
+                        <input type="hidden" id="editId">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Editar Producto</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="editNombre" class="form-label">Nombre del Producto *</label>
+                                <input type="text" class="form-control" id="editNombre" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="editSku" class="form-label">SKU *</label>
+                                <input type="text" class="form-control" id="editSku" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="editCategoria" class="form-label">Categoría</label>
+                                <select class="form-select" id="editCategoria">
+                                    <option value="">Sin categoría</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="editPrecioCosto" class="form-label">Precio de Costo *</label>
+                                <input type="number" class="form-control" id="editPrecioCosto" step="0.01" min="0" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="editPrecioVenta" class="form-label">Precio de Venta *</label>
+                                <input type="number" class="form-control" id="editPrecioVenta" step="0.01" min="0" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="editDescripcion" class="form-label">Descripción</label>
+                                <textarea class="form-control" id="editDescripcion" rows="3"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="editCantidad" class="form-label">Cantidad</label>
+                                <input type="number" class="form-control" id="editCantidad" min="0">
+                            </div>
+                            <div class="mb-3">
+                                <label for="editUmbral" class="form-label">Umbral de Reorden</label>
+                                <input type="number" class="form-control" id="editUmbral" min="0">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Actualizar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ajustar Stock Modal -->
+        <div class="modal fade" id="ajustarStockModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form id="ajustarStockForm">
+                        <input type="hidden" id="ajusteId">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Ajustar Stock</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="ajusteCantidad" class="form-label">Cantidad a ajustar</label>
+                                <input type="number" class="form-control" id="ajusteCantidad" required>
+                                <small class="form-text text-muted">Use números positivos para aumentar el stock, negativos para disminuirlo.</small>
+                            </div>
+                            <div class="mb-3">
+                                <label for="ajusteTipo" class="form-label">Tipo de Movimiento</label>
+                                <select class="form-select" id="ajusteTipo" required>
+                                    <option value="ajuste_manual">Ajuste Manual</option>
+                                    <option value="compra">Compra</option>
+                                    <option value="venta">Venta</option>
+                                    <option value="uso">Uso Interno</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="ajusteNotas" class="form-label">Notas</label>
+                                <textarea class="form-control" id="ajusteNotas" rows="3"></textarea>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Ajustar Stock</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nueva Categoría Modal -->
+        <div class="modal fade" id="nuevaCategoriaModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form id="nuevaCategoriaForm">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Nueva Categoría</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="nombreCategoria" class="form-label">Nombre de la Categoría *</label>
+                                <input type="text" class="form-control" id="nombreCategoria" required>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nuevo Proveedor Modal -->
+        <div class="modal fade" id="nuevoProveedorModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form id="nuevoProveedorForm">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Nuevo Proveedor</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="nombreProveedor" class="form-label">Nombre del Proveedor *</label>
+                                <input type="text" class="form-control" id="nombreProveedor" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="emailProveedor" class="form-label">Email de Contacto</label>
+                                <input type="email" class="form-control" id="emailProveedor">
+                            </div>
+                            <div class="mb-3">
+                                <label for="telefonoProveedor" class="form-label">Teléfono de Contacto</label>
+                                <input type="tel" class="form-control" id="telefonoProveedor">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nueva Orden de Compra Modal -->
+        <div class="modal fade" id="nuevaOrdenCompraModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <form id="nuevaOrdenCompraForm">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Nueva Orden de Compra</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="proveedorOrden" class="form-label">Proveedor *</label>
+                                <select class="form-select" id="proveedorOrden" required>
+                                    <option value="">Seleccione un proveedor</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="fechaEntrega" class="form-label">Fecha Esperada de Entrega</label>
+                                <input type="date" class="form-control" id="fechaEntrega">
+                            </div>
+                            
+                            <h6 class="mt-4">Items de la Orden</h6>
+                            <div id="itemsOrdenContainer">
+                                <div class="row mb-2">
+                                    <div class="col-md-4">
+                                        <select class="form-select item-producto">
+                                            <option value="">Seleccione un producto</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="number" class="form-control item-cantidad" placeholder="Cantidad" min="1">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="number" class="form-control item-precio" placeholder="Precio Unit." step="0.01" min="0">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button type="button" class="btn btn-danger btn-remove-item">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-secondary mt-2" id="btnAgregarItem">
+                                <i class="bi bi-plus-circle"></i> Agregar Item
+                            </button>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Crear Orden</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Importar CSV Modal -->
+        <div class="modal fade" id="importarCSVModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form id="importarCSVForm">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Importar Productos desde CSV</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="csvFile" class="form-label">Archivo CSV</label>
+                                <input type="file" class="form-control" id="csvFile" accept=".csv" required>
+                            </div>
+                            <div class="alert alert-info">
+                                <h6>Formato del CSV:</h6>
+                                <p>El archivo debe contener las siguientes columnas:</p>
+                                <ul>
+                                    <li>nombre (requerido)</li>
+                                    <li>sku (requerido)</li>
+                                    <li>precio_costo (requerido)</li>
+                                    <li>precio_venta (requerido)</li>
+                                    <li>descripcion (opcional)</li>
+                                    <li>cantidad (opcional, default: 0)</li>
+                                    <li>umbral_reorden (opcional, default: 10)</li>
+                                    <li>categoria_id (opcional)</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Importar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/main.js"></script>
+</body>
+</html> 
