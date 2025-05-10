@@ -9,34 +9,8 @@
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-    <!-- Login Form (shown when not authenticated) -->
-    <div id="loginContainer" class="container mt-5" style="display: none;">
-        <div class="row justify-content-center">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="text-center">Iniciar Sesión</h3>
-                    </div>
-                    <div class="card-body">
-                        <form id="loginForm">
-                            <div class="mb-3">
-                                <label for="username" class="form-label">Usuario</label>
-                                <input type="text" class="form-control" id="username" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="password" class="form-label">Contraseña</label>
-                                <input type="password" class="form-control" id="password" required>
-                            </div>
-                            <button type="submit" class="btn btn-primary w-100">Ingresar</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main App (shown when authenticated) -->
-    <div id="appContainer" style="display: none;">
+    <!-- Main App (siempre visible, sin login) -->
+    <div id="appContainer" style="display: block;">
         <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
             <div class="container">
                 <a class="navbar-brand" href="/">Sistema de Inventario</a>
@@ -59,16 +33,6 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="#" data-section="reportes">Reportes</a>
-                        </li>
-                    </ul>
-                    <ul class="navbar-nav">
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
-                                <i class="bi bi-person-circle"></i> <span id="currentUser"></span>
-                            </a>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="#" id="btnLogout">Cerrar Sesión</a></li>
-                            </ul>
                         </li>
                     </ul>
                 </div>

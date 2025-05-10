@@ -1,7 +1,21 @@
 // Configuración de la API
-const API_URL = '/api';
+const API_URL = 'http://localhost:5000/api';
 
-// Mostrar alertas
+let productosCargados = [];
+
+function showApp() {
+    const appContainer = document.getElementById('appContainer');
+    if (appContainer) appContainer.style.display = 'block';
+}
+
+function showSection(sectionId) {
+    document.querySelectorAll('.section').forEach(section => {
+        section.style.display = 'none';
+    });
+    const targetSection = document.getElementById(sectionId + 'Section');
+    if (targetSection) targetSection.style.display = 'block';
+}
+
 function showAlert(message, type = 'success') {
     const alertContainer = document.getElementById('alertContainer');
     const alert = document.createElement('div');
@@ -25,7 +39,9 @@ async function obtenerProductos() {
 async function crearProductoAPI(producto) {
     const response = await fetch(`${API_URL}/productos`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json'
+        },
         body: JSON.stringify(producto)
     });
     if (!response.ok) throw new Error('Error al crear producto');
@@ -36,7 +52,9 @@ async function crearProductoAPI(producto) {
 async function actualizarProductoAPI(id, producto) {
     const response = await fetch(`${API_URL}/productos/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json'
+        },
         body: JSON.stringify(producto)
     });
     if (!response.ok) throw new Error('Error al actualizar producto');
@@ -45,38 +63,14 @@ async function actualizarProductoAPI(id, producto) {
 
 // Eliminar producto
 async function eliminarProductoAPI(id) {
-    const response = await fetch(`${API_URL}/productos/${id}`, { method: 'DELETE' });
+    const response = await fetch(`${API_URL}/productos/${id}`, {
+        method: 'DELETE'
+    });
     if (!response.ok) throw new Error('Error al eliminar producto');
     return true;
 }
 
-// Obtener productos para reordenar
-async function obtenerProductosReordenar() {
-    const response = await fetch(`${API_URL}/productos/reordenar`);
-    if (!response.ok) throw new Error('Error al obtener productos para reordenar');
-    return await response.json();
-}
-
-// Botón Reordenar
-async function manejarReordenar(event) {
-    event.preventDefault();
-    try {
-        const productos = await obtenerProductosReordenar();
-        if (productos.length === 0) {
-            showAlert('No hay productos que necesiten reorden.', 'info');
-            return;
-        }
-        let mensaje = '¡Atención! Los siguientes productos necesitan ser reordenados:\n\n';
-        productos.forEach(p => {
-            mensaje += `- ${p.nombre} (Stock: ${p.cantidad}, Umbral: ${p.umbral_reorden})\n`;
-        });
-        alert(mensaje);
-    } catch (error) {
-        showAlert('Error al obtener productos para reordenar', 'danger');
-    }
-}
-
-// Mostrar productos en la tabla (con estado visual)
+// Mostrar productos en la tabla
 function mostrarProductos(productos) {
     const tbody = document.getElementById('productosTableBody');
     tbody.innerHTML = '';
@@ -103,11 +97,14 @@ function mostrarProductos(productos) {
     });
 }
 
-// Cargar productos al iniciar
+// Cargar productos
 async function cargarProductos() {
     try {
         const productos = await obtenerProductos();
+        productosCargados = productos;
         mostrarProductos(productos);
+        llenarSelectCategorias();
+        return productos;
     } catch (error) {
         showAlert('Error al cargar productos', 'danger');
     }
@@ -130,7 +127,7 @@ async function manejarNuevoProducto(event) {
     try {
         await crearProductoAPI(producto);
         form.reset();
-        cargarProductos();
+        await cargarProductos();
         showAlert('Producto creado exitosamente');
         const modal = bootstrap.Modal.getInstance(document.getElementById('nuevoProductoModal'));
         if (modal) modal.hide();
@@ -139,7 +136,7 @@ async function manejarNuevoProducto(event) {
     }
 }
 
-// Editar producto (abrir modal con datos)
+// Editar producto
 async function editarProducto(id) {
     try {
         const productos = await obtenerProductos();
@@ -172,7 +169,7 @@ async function manejarEditarProducto(event) {
     };
     try {
         await actualizarProductoAPI(id, producto);
-        cargarProductos();
+        await cargarProductos();
         showAlert('Producto actualizado');
         const modal = bootstrap.Modal.getInstance(document.getElementById('editarProductoModal'));
         modal.hide();
@@ -186,7 +183,7 @@ async function eliminarProducto(id) {
     if (!confirm('¿Seguro que deseas eliminar este producto?')) return;
     try {
         await eliminarProductoAPI(id);
-        cargarProductos();
+        await cargarProductos();
         showAlert('Producto eliminado');
     } catch (error) {
         showAlert('Error al eliminar producto', 'danger');
@@ -194,14 +191,41 @@ async function eliminarProducto(id) {
 }
 window.eliminarProducto = eliminarProducto;
 
-// Inicialización
+function filtrarProductos() {
+    const nombre = document.getElementById('searchNombre').value.toLowerCase();
+    const sku = document.getElementById('searchSKU').value.toLowerCase();
+    const categoria = document.getElementById('searchCategoria').value;
+
+    const filtrados = productosCargados.filter(producto => {
+        const coincideNombre = producto.nombre.toLowerCase().includes(nombre);
+        const coincideSKU = producto.sku && producto.sku.toLowerCase().includes(sku);
+        const coincideCategoria = !categoria || (producto.categoria && producto.categoria == categoria);
+        return coincideNombre && coincideSKU && coincideCategoria;
+    });
+
+    mostrarProductos(filtrados);
+}
+
+function llenarSelectCategorias() {
+    const select = document.getElementById('searchCategoria');
+    const categorias = [...new Set(productosCargados.map(p => p.categoria).filter(Boolean))];
+    select.innerHTML = '<option value="">Todas las categorías</option>' +
+        categorias.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Mostrar siempre el contenedor principal
-    const appContainer = document.getElementById('appContainer');
-    if (appContainer) appContainer.style.display = 'block';
-    const loginContainer = document.getElementById('loginContainer');
-    if (loginContainer) loginContainer.style.display = 'none';
-    cargarProductos();
+    showApp();
+    cargarProductos().then(llenarSelectCategorias);
+    showSection('inventario');
+
+    document.querySelectorAll('.nav-link[data-section]').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const section = e.target.dataset.section;
+            showSection(section);
+        });
+    });
+
     const nuevoProductoForm = document.getElementById('nuevoProductoForm');
     if (nuevoProductoForm) {
         nuevoProductoForm.addEventListener('submit', manejarNuevoProducto);
@@ -210,4 +234,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (editarProductoForm) {
         editarProductoForm.addEventListener('submit', manejarEditarProducto);
     }
-}); 
+
+    document.getElementById('searchNombre').addEventListener('input', filtrarProductos);
+    document.getElementById('searchSKU').addEventListener('input', filtrarProductos);
+    document.getElementById('searchCategoria').addEventListener('change', filtrarProductos);
+});
