@@ -1,5 +1,6 @@
 // Configuración de la API
-const API_URL = 'http://localhost:5000/api';
+const API_URL = 'http://localhost:5001/api';
+const API_TOKEN = 'mi_token_api_super_seguro_456';  // Este token debe coincidir con el del backend
 
 let productosCargados = [];
 
@@ -28,46 +29,82 @@ function showAlert(message, type = 'success') {
     setTimeout(() => alert.remove(), 4000);
 }
 
+// Función auxiliar para hacer peticiones a la API
+async function apiRequest(url, options = {}) {
+    const defaultOptions = {
+        headers: {
+            'Content-Type': 'application/json',
+            'X-API-Token': API_TOKEN
+        }
+    };
+    const finalOptions = { ...defaultOptions, ...options };
+    console.log('URL de la petición:', url);
+    console.log('Método de la petición:', finalOptions.method || 'GET');
+    console.log('Headers completos:', finalOptions.headers);
+    if (finalOptions.body) {
+        console.log('Body de la petición:', finalOptions.body);
+    }
+    
+    try {
+        const response = await fetch(url, finalOptions);
+        console.log('Status de la respuesta:', response.status);
+        console.log('Headers de la respuesta:', Object.fromEntries(response.headers.entries()));
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Error en la respuesta:', errorText);
+            throw new Error(`Error en la petición: ${response.statusText} - ${errorText}`);
+        }
+        
+        // Si la respuesta es 204 (No Content), retornar null
+        if (response.status === 204) {
+            return null;
+        }
+        
+        // Intentar parsear la respuesta como JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            const data = await response.json();
+            console.log('Datos de la respuesta:', data);
+            return data;
+        }
+        
+        // Si no es JSON, retornar el texto
+        const text = await response.text();
+        console.log('Respuesta de texto:', text);
+        return text;
+    } catch (error) {
+        console.error('Error completo:', error);
+        throw error;
+    }
+}
+
 // Obtener productos
 async function obtenerProductos() {
-    const response = await fetch(`${API_URL}/productos`);
-    if (!response.ok) throw new Error('Error al obtener productos');
-    return await response.json();
+    return await apiRequest(`${API_URL}/productos`);
 }
 
 // Crear producto
 async function crearProductoAPI(producto) {
-    const response = await fetch(`${API_URL}/productos`, {
+    return await apiRequest(`${API_URL}/productos`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify(producto)
     });
-    if (!response.ok) throw new Error('Error al crear producto');
-    return await response.json();
 }
 
 // Actualizar producto
 async function actualizarProductoAPI(id, producto) {
-    const response = await fetch(`${API_URL}/productos/${id}`, {
+    return await apiRequest(`${API_URL}/productos/${id}`, {
         method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify(producto)
     });
-    if (!response.ok) throw new Error('Error al actualizar producto');
-    return await response.json();
 }
 
 // Eliminar producto
 async function eliminarProductoAPI(id) {
-    const response = await fetch(`${API_URL}/productos/${id}`, {
+    return await apiRequest(`${API_URL}/productos/${id}`, {
         method: 'DELETE'
     });
-    if (!response.ok) throw new Error('Error al eliminar producto');
-    return true;
 }
 
 // Mostrar productos en la tabla
@@ -228,44 +265,30 @@ async function llenarSelectCategorias() {
 
 // Obtener categorías
 async function obtenerCategorias() {
-    const response = await fetch(`${API_URL}/categorias`);
-    if (!response.ok) throw new Error('Error al obtener categorías');
-    return await response.json();
+    return await apiRequest(`${API_URL}/categorias`);
 }
 
 // Crear categoría
 async function crearCategoriaAPI(categoria) {
-    const response = await fetch(`${API_URL}/categorias`, {
+    return await apiRequest(`${API_URL}/categorias`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify(categoria)
     });
-    if (!response.ok) throw new Error('Error al crear categoría');
-    return await response.json();
 }
 
 // Actualizar categoría
 async function actualizarCategoriaAPI(id, categoria) {
-    const response = await fetch(`${API_URL}/categorias/${id}`, {
+    return await apiRequest(`${API_URL}/categorias/${id}`, {
         method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify(categoria)
     });
-    if (!response.ok) throw new Error('Error al actualizar categoría');
-    return await response.json();
 }
 
 // Eliminar categoría
 async function eliminarCategoriaAPI(id) {
-    const response = await fetch(`${API_URL}/categorias/${id}`, {
+    return await apiRequest(`${API_URL}/categorias/${id}`, {
         method: 'DELETE'
     });
-    if (!response.ok) throw new Error('Error al eliminar categoría');
-    return true;
 }
 
 // Cargar categorías
@@ -368,44 +391,30 @@ window.eliminarCategoria = eliminarCategoria;
 
 // Obtener proveedores
 async function obtenerProveedores() {
-    const response = await fetch(`${API_URL}/proveedores`);
-    if (!response.ok) throw new Error('Error al obtener proveedores');
-    return await response.json();
+    return await apiRequest(`${API_URL}/proveedores`);
 }
 
 // Crear proveedor
 async function crearProveedorAPI(proveedor) {
-    const response = await fetch(`${API_URL}/proveedores`, {
+    return await apiRequest(`${API_URL}/proveedores`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify(proveedor)
     });
-    if (!response.ok) throw new Error('Error al crear proveedor');
-    return await response.json();
 }
 
 // Actualizar proveedor
 async function actualizarProveedorAPI(id, proveedor) {
-    const response = await fetch(`${API_URL}/proveedores/${id}`, {
+    return await apiRequest(`${API_URL}/proveedores/${id}`, {
         method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify(proveedor)
     });
-    if (!response.ok) throw new Error('Error al actualizar proveedor');
-    return await response.json();
 }
 
 // Eliminar proveedor
 async function eliminarProveedorAPI(id) {
-    const response = await fetch(`${API_URL}/proveedores/${id}`, {
+    return await apiRequest(`${API_URL}/proveedores/${id}`, {
         method: 'DELETE'
     });
-    if (!response.ok) throw new Error('Error al eliminar proveedor');
-    return true;
 }
 
 // Cargar proveedores
@@ -584,22 +593,17 @@ async function manejarNuevaOrdenCompra(event) {
     }
 }
 
+// Crear orden de compra
 async function crearOrdenCompraAPI(orden) {
-    const response = await fetch(`${API_URL}/ordenes-compra`, {
+    return await apiRequest(`${API_URL}/ordenes-compra`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify(orden)
     });
-    if (!response.ok) throw new Error('Error al crear orden de compra');
-    return await response.json();
 }
 
+// Obtener órdenes de compra
 async function obtenerOrdenesCompra() {
-    const response = await fetch(`${API_URL}/ordenes-compra`);
-    if (!response.ok) throw new Error('Error al obtener órdenes de compra');
-    return await response.json();
+    return await apiRequest(`${API_URL}/ordenes-compra`);
 }
 
 function mostrarOrdenesCompra(ordenes) {
@@ -686,18 +690,17 @@ async function verDetalleOrden(id) {
 }
 window.verDetalleOrden = verDetalleOrden;
 
+// Cambiar estado de orden
 async function cambiarEstadoOrden(id, nuevoEstado) {
-    await fetch(`${API_URL}/ordenes-compra/${id}`, {
+    return await apiRequest(`${API_URL}/ordenes-compra/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: nuevoEstado })
     });
-    await cargarOrdenesCompra();
 }
 
 async function cargarInventarioValorado() {
     try {
-        const response = await fetch('http://localhost:5000/api/productos');
+        const response = await fetch(`${API_URL}/productos`);
         if (!response.ok) throw new Error('Error al obtener productos');
         const productos = await response.json();
 

@@ -17,14 +17,17 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements.txt requirements.txt
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
-COPY . .
+# Copy all Python files first
+COPY *.py .
+
+# Make test script executable
+RUN chmod +x test_logging.py
 
 # Expose port
 EXPOSE 5000
 
 # Run the application with Gunicorn
-CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"] 
+CMD ["gunicorn", "--preload", "-b", "0.0.0.0:5000", "app:app", "--log-level=info", "--capture-output", "--access-logfile=-", "--error-logfile=-", "--logger-class=gunicorn.glogging.Logger"] 

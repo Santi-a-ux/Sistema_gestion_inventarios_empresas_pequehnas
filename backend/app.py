@@ -7,12 +7,64 @@ from flask_migrate import Migrate
 import logging
 from logging.handlers import RotatingFileHandler
 from pythonjsonlogger import jsonlogger
-from elasticsearch import Elasticsearch
-import requests
-import json
+from marshmallow import Schema, fields, validate, ValidationError
+from functools import wraps
+import secrets
+from logging_config import setup_logging
 
 app = Flask(__name__)
 CORS(app)
+
+# Configurar logging primero
+setup_logging()
+logger = logging.getLogger()  # Logger raíz
+
+# Configuración de seguridad
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', secrets.token_hex(32))
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = 1800  # 30 minutos
+
+# Middleware de seguridad
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+
+# Decorador para validar tokens
+def require_token(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        logger.info(f"Validando token para ruta: {request.path}", extra={
+            'type': 'auth',
+            'method': request.method,
+            'path': request.path,
+            'headers': dict(request.headers)
+        })
+        token = request.headers.get('X-API-Token')
+        expected_token = os.getenv('API_TOKEN')
+        
+        if not token:
+            logger.error("No se recibió token en la petición", extra={
+                'type': 'auth_error',
+                'error': 'token_missing'
+            })
+            return jsonify({"error": "Token no proporcionado"}), 401
+        if token != expected_token:
+            logger.error("Token inválido", extra={
+                'type': 'auth_error',
+                'error': 'invalid_token'
+            })
+            return jsonify({"error": "Token inválido"}), 401
+            
+        logger.info("Token válido, procediendo con la petición", extra={
+            'type': 'auth_success'
+        })
+        return f(*args, **kwargs)
+    return decorated
 
 # Configuración de la base de datos
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@db:5432/inventario')
@@ -20,6 +72,55 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+
+# Log de prueba explícito para Logstash
+logger.info("PRUEBA DE LOG A LOGSTASH", extra={"type": "test"})
+
+logging.error("PRUEBA ERROR DESDE EL RAÍZ")
+
+# Error handlers
+@app.errorhandler(404)
+def not_found_error(error):
+    logger.error("PRUEBA ERROR SIMPLE")
+    logger.error(f"Recurso no encontrado: {request.path}", extra={
+        'type': 'not_found',
+        'path': request.path,
+        'method': request.method,
+        'headers': dict(request.headers)
+    })
+    return jsonify({"error": "Recurso no encontrado"}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Error interno del servidor: {str(error)}", extra={
+        'type': 'server_error',
+        'error': str(error),
+        'path': request.path,
+        'method': request.method
+    })
+    return jsonify({"error": "Error interno del servidor"}), 500
+
+@app.errorhandler(400)
+def bad_request_error(error):
+    logger.error(f"Error en la solicitud: {str(error)}", extra={
+        'type': 'bad_request',
+        'error': str(error),
+        'path': request.path,
+        'method': request.method,
+        'data': request.get_json(silent=True)
+    })
+    return jsonify({"error": "Error en la solicitud"}), 400
+
+@app.errorhandler(ValidationError)
+def validation_error(error):
+    logger.error(f"Error de validación: {str(error)}", extra={
+        'type': 'validation_error',
+        'error': str(error),
+        'path': request.path,
+        'method': request.method,
+        'data': request.get_json(silent=True)
+    })
+    return jsonify({"error": "Error de validación", "detalles": error.messages}), 400
 
 # Modelos
 class Categoria(db.Model):
@@ -153,31 +254,33 @@ class MovimientoInventario(db.Model):
             'usuario': self.usuario or ''
         }
 
-class ElasticsearchHandler(logging.Handler):
-    def __init__(self, hosts):
-        logging.Handler.__init__(self)
-        self.es_url = hosts[0] if isinstance(hosts, list) else hosts
+# Schemas de validación
+class ProductoSchema(Schema):
+    nombre = fields.Str(required=True, validate=validate.Length(min=1, max=100))
+    sku = fields.Str(required=True, validate=validate.Length(min=1, max=50))
+    precio_costo = fields.Decimal(required=True, validate=validate.Range(min=0))
+    precio_venta = fields.Decimal(required=True, validate=validate.Range(min=0))
+    descripcion = fields.Str(allow_none=True)
+    cantidad = fields.Int(validate=validate.Range(min=0))
+    umbral_reorden = fields.Int(validate=validate.Range(min=0))
+    categoria_id = fields.Int(allow_none=True)
 
-    def emit(self, record):
-        log_entry = self.format(record)
-        try:
-            requests.post(f"{self.es_url}/logs/_doc", data=log_entry, headers={"Content-Type": "application/json"})
-        except Exception as e:
-            print("Error enviando log a Elasticsearch:", e)
+class OrdenCompraSchema(Schema):
+    proveedor_id = fields.Int(required=True)
+    fecha_entrega = fields.DateTime(allow_none=True)
+    estado = fields.Str(validate=validate.OneOf(['pendiente', 'completada', 'cancelada']))
+    items = fields.List(fields.Dict(), required=True, validate=validate.Length(min=1))
 
-# Configura el logger
-es_handler = ElasticsearchHandler(['http://elasticsearch:9200'])
-es_handler.setFormatter(jsonlogger.JsonFormatter())
-logging.getLogger().addHandler(es_handler)
-logging.getLogger().setLevel(logging.INFO)
+class MovimientoSchema(Schema):
+    producto_id = fields.Int(required=True)
+    tipo = fields.Str(required=True, validate=validate.OneOf(['venta', 'uso', 'ajuste_manual']))
+    cantidad = fields.Int(required=True)
+    usuario = fields.Str(allow_none=True)
 
-def enviar_a_elasticsearch(indice, documento, pipeline):
-    url = f"http://elasticsearch:9200/{indice}/_doc?pipeline={pipeline}"
-    try:
-        response = requests.post(url, json=documento)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"Error enviando a Elasticsearch: {e}")
+# Instancias de schemas
+producto_schema = ProductoSchema()
+orden_compra_schema = OrdenCompraSchema()
+movimiento_schema = MovimientoSchema()
 
 # Endpoints de Categorías
 @app.route('/api/categorias', methods=['GET'])
@@ -216,55 +319,202 @@ def eliminar_categoria(id):
 # Endpoints de Productos
 @app.route('/api/productos', methods=['GET'])
 def obtener_productos():
-    productos = Producto.query.all()
-    return jsonify([p.to_dict() for p in productos])
+    logger.info("Obteniendo lista de productos", extra={
+        'type': 'product_list',
+        'method': 'GET'
+    })
+    try:
+        productos = Producto.query.all()
+        logger.debug(f"Productos encontrados: {len(productos)}", extra={
+            'type': 'product_list',
+            'count': len(productos)
+        })
+        return jsonify([p.to_dict() for p in productos])
+    except Exception as e:
+        logger.error(f"Error al obtener productos: {str(e)}", extra={
+            'type': 'server_error',
+            'error': str(e)
+        })
+        return jsonify({"error": "Error al obtener productos"}), 500
 
 @app.route('/api/productos/<int:id>', methods=['GET'])
 def obtener_producto(id):
-    producto = Producto.query.get_or_404(id)
-    return jsonify(producto.to_dict())
+    logger.info(f"Obteniendo producto con ID: {id}", extra={
+        'type': 'product_get',
+        'method': 'GET',
+        'product_id': id
+    })
+    try:
+        producto = Producto.query.get_or_404(id)
+        logger.debug(f"Producto encontrado: {producto.to_dict()}", extra={
+            'type': 'product_get',
+            'product_id': id,
+            'data': producto.to_dict()
+        })
+        return jsonify(producto.to_dict())
+    except Exception as e:
+        logger.error(f"Error al obtener producto {id}: {str(e)}", extra={
+            'type': 'server_error',
+            'error': str(e),
+            'product_id': id
+        })
+        return jsonify({"error": "Error al obtener producto"}), 500
 
 @app.route('/api/productos', methods=['POST'])
+@require_token
 def crear_producto():
-    data = request.json
-    nuevo = Producto(
-        nombre=data['nombre'],
-        sku=data['sku'],
-        precio_costo=data['precio_costo'],
-        precio_venta=data['precio_venta'],
-        descripcion=data.get('descripcion', ''),
-        cantidad=data.get('cantidad', 0),
-        umbral_reorden=data.get('umbral_reorden', 10),
-        categoria_id=data.get('categoria_id')
-    )
-    db.session.add(nuevo)
-    db.session.commit()
-    # Enviar a Elasticsearch
-    enviar_a_elasticsearch("productos", nuevo.to_dict(), "Productos")
-    app.logger.info("Producto creado", extra={"usuario": "admin", "producto": nuevo.nombre})
-    return jsonify(nuevo.to_dict()), 201
+    logger.info("Iniciando creación de producto", extra={
+        'type': 'product_creation',
+        'method': 'POST'
+    })
+    try:
+        data = request.get_json()
+        logger.debug(f"Datos recibidos: {data}", extra={
+            'type': 'product_data',
+            'data': data
+        })
+        
+        # Validar datos requeridos
+        required_fields = ['nombre', 'sku', 'precio_costo', 'precio_venta']
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            error_msg = f"Campos requeridos faltantes: {', '.join(missing_fields)}"
+            logger.warning(error_msg, extra={
+                'type': 'validation_error',
+                'missing_fields': missing_fields,
+                'data': data
+            })
+            return jsonify({"error": error_msg}), 400
+        
+        # Validar tipos de datos
+        try:
+            precio_costo = float(data['precio_costo'])
+            precio_venta = float(data['precio_venta'])
+            cantidad = int(data.get('cantidad', 0))
+            umbral_reorden = int(data.get('umbral_reorden', 10))
+            categoria_id = int(data['categoria_id']) if data.get('categoria_id') else None
+        except ValueError as e:
+            logger.warning(f"Error en tipos de datos: {str(e)}", extra={
+                'type': 'validation_error',
+                'error': str(e),
+                'data': data
+            })
+            return jsonify({"error": f"Error en tipos de datos: {str(e)}"}), 400
+        
+        # Crear nuevo producto
+        nuevo_producto = Producto(
+            nombre=data['nombre'],
+            sku=data['sku'],
+            precio_costo=precio_costo,
+            precio_venta=precio_venta,
+            descripcion=data.get('descripcion', ''),
+            cantidad=cantidad,
+            umbral_reorden=umbral_reorden,
+            categoria_id=categoria_id
+        )
+        
+        db.session.add(nuevo_producto)
+        db.session.commit()
+        
+        logger.info(f"Producto creado exitosamente: {nuevo_producto.to_dict()}", extra={
+            'type': 'product_created',
+            'product_id': nuevo_producto.id,
+            'data': nuevo_producto.to_dict()
+        })
+        return jsonify(nuevo_producto.to_dict()), 201
+        
+    except ValueError as e:
+        logger.error(f"Error de validación: {str(e)}", extra={
+            'type': 'validation_error',
+            'error': str(e),
+            'data': data
+        })
+        return jsonify({"error": f"Error de validación: {str(e)}"}), 400
+    except Exception as e:
+        logger.error(f"Error al crear producto: {str(e)}", extra={
+            'type': 'server_error',
+            'error': str(e),
+            'data': data
+        })
+        db.session.rollback()
+        return jsonify({"error": f"Error interno del servidor: {str(e)}"}), 500
 
 @app.route('/api/productos/<int:id>', methods=['PUT'])
 def actualizar_producto(id):
-    data = request.json
-    producto = Producto.query.get_or_404(id)
-    producto.nombre = data['nombre']
-    producto.sku = data['sku']
-    producto.precio_costo = data['precio_costo']
-    producto.precio_venta = data['precio_venta']
-    producto.descripcion = data.get('descripcion', '')
-    producto.cantidad = data.get('cantidad', 0)
-    producto.umbral_reorden = data.get('umbral_reorden', 10)
-    producto.categoria_id = data.get('categoria_id')
-    db.session.commit()
-    return jsonify(producto.to_dict())
+    logger.info(f"Actualizando producto con ID: {id}", extra={
+        'type': 'product_update',
+        'method': 'PUT',
+        'product_id': id
+    })
+    try:
+        data = request.get_json()
+        logger.debug(f"Datos recibidos para actualización: {data}", extra={
+            'type': 'product_update',
+            'product_id': id,
+            'data': data
+        })
+        
+        producto = Producto.query.get_or_404(id)
+        
+        # Validar datos
+        try:
+            producto.nombre = data['nombre']
+            producto.sku = data['sku']
+            producto.precio_costo = float(data['precio_costo'])
+            producto.precio_venta = float(data['precio_venta'])
+            producto.descripcion = data.get('descripcion', '')
+            producto.cantidad = int(data.get('cantidad', 0))
+            producto.umbral_reorden = int(data.get('umbral_reorden', 10))
+            producto.categoria_id = int(data['categoria_id']) if data.get('categoria_id') else None
+        except (ValueError, KeyError) as e:
+            logger.warning(f"Error de validación al actualizar producto {id}: {str(e)}", extra={
+                'type': 'validation_error',
+                'error': str(e),
+                'product_id': id,
+                'data': data
+            })
+            return jsonify({"error": f"Error de validación: {str(e)}"}), 400
+        
+        db.session.commit()
+        logger.info(f"Producto {id} actualizado exitosamente", extra={
+            'type': 'product_updated',
+            'product_id': id,
+            'data': producto.to_dict()
+        })
+        return jsonify(producto.to_dict())
+    except Exception as e:
+        logger.error(f"Error al actualizar producto {id}: {str(e)}", extra={
+            'type': 'server_error',
+            'error': str(e),
+            'product_id': id
+        })
+        db.session.rollback()
+        return jsonify({"error": "Error al actualizar producto"}), 500
 
 @app.route('/api/productos/<int:id>', methods=['DELETE'])
 def eliminar_producto(id):
-    producto = Producto.query.get_or_404(id)
-    db.session.delete(producto)
-    db.session.commit()
-    return '', 204
+    logger.info(f"Eliminando producto con ID: {id}", extra={
+        'type': 'product_delete',
+        'method': 'DELETE',
+        'product_id': id
+    })
+    try:
+        producto = Producto.query.get_or_404(id)
+        db.session.delete(producto)
+        db.session.commit()
+        logger.info(f"Producto {id} eliminado exitosamente", extra={
+            'type': 'product_deleted',
+            'product_id': id
+        })
+        return '', 204
+    except Exception as e:
+        logger.error(f"Error al eliminar producto {id}: {str(e)}", extra={
+            'type': 'server_error',
+            'error': str(e),
+            'product_id': id
+        })
+        db.session.rollback()
+        return jsonify({"error": "Error al eliminar producto"}), 500
 
 # Endpoints de Proveedores
 @app.route('/api/proveedores', methods=['GET'])
@@ -287,8 +537,6 @@ def crear_proveedor():
     )
     db.session.add(nuevo)
     db.session.commit()
-    # Enviar a Elasticsearch
-    enviar_a_elasticsearch("proveedores", nuevo.to_dict(), "Proveedores")
     return jsonify(nuevo.to_dict()), 201
 
 @app.route('/api/proveedores/<int:id>', methods=['PUT'])
@@ -321,32 +569,46 @@ def obtener_orden_compra(id):
 
 @app.route('/api/ordenes-compra', methods=['POST'])
 def crear_orden_compra():
-    data = request.json
-    nueva_orden = OrdenCompra(
-        proveedor_id=data['proveedor_id'],
-        fecha_entrega=datetime.fromisoformat(data['fecha_entrega']) if data.get('fecha_entrega') else None,
-        estado=data.get('estado', 'pendiente')
-    )
-    
-    total = 0
-    for item_data in data['items']:
-        producto = Producto.query.get_or_404(item_data['producto_id'])
-        subtotal = item_data['cantidad'] * item_data['precio_unitario']
-        item = OrdenCompraItem(
-            producto_id=producto.id,
-            cantidad=item_data['cantidad'],
-            precio_unitario=item_data['precio_unitario'],
-            subtotal=subtotal
-        )
-        nueva_orden.items.append(item)
-        total += subtotal
-    
-    nueva_orden.total = total
-    db.session.add(nueva_orden)
-    db.session.commit()
-    # Enviar a Elasticsearch
-    enviar_a_elasticsearch("ordenes", nueva_orden.to_dict(), "Ordenes")
-    return jsonify(nueva_orden.to_dict()), 201
+    try:
+        data = request.json
+        # Validar datos
+        errors = orden_compra_schema.validate(data)
+        if errors:
+            return jsonify({"error": "Datos inválidos", "detalles": errors}), 400
+            
+        logger.info(f"Creando nueva orden de compra para proveedor: {data['proveedor_id']}")
+        
+        with db.session.begin_nested():
+            nueva_orden = OrdenCompra(
+                proveedor_id=data['proveedor_id'],
+                fecha_entrega=datetime.fromisoformat(data['fecha_entrega']) if data.get('fecha_entrega') else None,
+                estado=data.get('estado', 'pendiente')
+            )
+            
+            total = 0
+            for item_data in data['items']:
+                producto = Producto.query.get_or_404(item_data['producto_id'])
+                subtotal = item_data['cantidad'] * item_data['precio_unitario']
+                item = OrdenCompraItem(
+                    producto_id=producto.id,
+                    cantidad=item_data['cantidad'],
+                    precio_unitario=item_data['precio_unitario'],
+                    subtotal=subtotal
+                )
+                nueva_orden.items.append(item)
+                total += subtotal
+            
+            nueva_orden.total = total
+            db.session.add(nueva_orden)
+            
+        db.session.commit()
+        logger.info(f"Orden de compra creada exitosamente: {nueva_orden.id}")
+        return jsonify(nueva_orden.to_dict()), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error al crear orden de compra: {str(e)}")
+        return jsonify({"error": "Error al crear la orden de compra"}), 500
 
 @app.route('/api/ordenes-compra/<int:id>', methods=['PUT'])
 def actualizar_orden_compra(id):
@@ -404,32 +666,60 @@ def obtener_movimientos():
 
 @app.route('/api/movimientos', methods=['POST'])
 def registrar_movimiento():
-    data = request.json
-    producto = Producto.query.get_or_404(data['producto_id'])
-    tipo = data['tipo']  # 'venta', 'uso', 'ajuste_manual', etc.
-    cantidad = int(data['cantidad'])
-    usuario = data.get('usuario', 'admin')
+    try:
+        data = request.json
+        logger.info(f"Registrando movimiento de inventario para producto: {data['producto_id']}")
+        
+        with db.session.begin_nested():
+            producto = Producto.query.get_or_404(data['producto_id'])
+            tipo = data['tipo']
+            cantidad = int(data['cantidad'])
+            usuario = data.get('usuario', 'admin')
 
-    # Actualiza el stock según el tipo de movimiento
-    if tipo in ['venta', 'uso']:
-        if producto.cantidad < cantidad:
-            return jsonify({'error': 'Stock insuficiente'}), 400
-        producto.cantidad -= cantidad
-    elif tipo == 'ajuste_manual':
-        producto.cantidad += cantidad  # Puede ser positivo o negativo
-    else:
-        return jsonify({'error': 'Tipo de movimiento no soportado'}), 400
+            if tipo in ['venta', 'uso']:
+                if producto.cantidad < cantidad:
+                    raise ValueError('Stock insuficiente')
+                producto.cantidad -= cantidad
+            elif tipo == 'ajuste_manual':
+                producto.cantidad += cantidad
+            else:
+                raise ValueError('Tipo de movimiento no soportado')
 
-    # Registra el movimiento
-    movimiento = MovimientoInventario(
-        producto_id=producto.id,
-        tipo=tipo,
-        cantidad=cantidad,
-        usuario=usuario
-    )
-    db.session.add(movimiento)
-    db.session.commit()
-    return jsonify(movimiento.to_dict()), 201
+            movimiento = MovimientoInventario(
+                producto_id=producto.id,
+                tipo=tipo,
+                cantidad=cantidad,
+                usuario=usuario
+            )
+            db.session.add(movimiento)
+            
+        db.session.commit()
+        logger.info(f"Movimiento registrado exitosamente: {movimiento.id}")
+        return jsonify(movimiento.to_dict()), 201
+        
+    except ValueError as ve:
+        db.session.rollback()
+        logger.error(f"Error de validación en movimiento: {str(ve)}")
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error al registrar movimiento: {str(e)}")
+        return jsonify({"error": "Error al registrar el movimiento"}), 500
+
+def post_fork(server, worker):
+    from logging_config import setup_logging
+    setup_logging()
+    print(f"Reconfigurando logging en el worker PID: {os.getpid()}")
+
+# Si se está ejecutando bajo Gunicorn, registra el hook post_fork
+gunicorn_software = os.environ.get("SERVER_SOFTWARE", "")
+if "gunicorn" in gunicorn_software:
+    try:
+        import gunicorn.app.base
+        gunicorn.app.base.Worker.post_fork = staticmethod(post_fork)
+    except Exception as e:
+        print(f"Error registrando post_fork: {e}")
 
 if __name__ == '__main__':
+    logger.info("Iniciando aplicación")
     app.run(host='0.0.0.0', port=5000) 

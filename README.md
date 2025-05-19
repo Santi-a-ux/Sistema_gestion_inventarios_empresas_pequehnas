@@ -1,103 +1,139 @@
-# Sistema de Gestión de Inventario
+# Sistema de Gestión de Productos
 
-Un sistema web completo para la gestión de inventario de pequeñas empresas, desarrollado con **React (Frontend)**, **Flask (Backend)**, **PostgreSQL** y monitoreo/logs con **Elasticsearch + Kibana (ELK)**.  
-Incluye despliegue con **Docker Compose** y scripts de inicialización.
+Sistema completo de gestión de productos con backend en Flask, frontend en React, base de datos PostgreSQL y stack ELK para logging.
 
-## Características principales
+## Características
 
-- Registro y gestión de productos, proveedores y órdenes de compra.
-- Control de stock con alertas de reorden.
-- Gestión de usuarios y roles (admin, usuario, etc.).
-- Manejo de logs y visualización en Kibana.
-- Visualizaciones y dashboards personalizados en Kibana.
-- Integración y despliegue fácil con Docker Compose.
-- Scripts de inicialización de base de datos y datos de ejemplo.
+- **Backend (Flask)**
+  - API RESTful completa
+  - Autenticación basada en tokens
+  - Validación de datos con Marshmallow
+  - Logging centralizado con ELK Stack
+  - Manejo de errores y excepciones
+  - Documentación de API con Swagger
 
-## Arquitectura del Proyecto
+- **Frontend (React)**
+  - Interfaz moderna y responsiva
+  - Gestión de productos, categorías y proveedores
+  - Dashboard con métricas
+  - Formularios validados
+  - Manejo de errores y notificaciones
 
-```
-.
-├── frontend/                   # Aplicación React (interfaz de usuario)
-├── backend/                    # API Flask (lógica de negocio)
-├── init.sql                    # Script de inicialización y seeding de la BD
-├── docker-compose.yml
-├── elasticsearch + kibana      # Contenedores ELK
-└── README.md
-```
+- **Base de Datos (PostgreSQL)**
+  - Modelos relacionales optimizados
+  - Migraciones automáticas
+  - Scripts de inicialización
+  - Datos de prueba incluidos
+
+- **Logging (ELK Stack)**
+  - Elasticsearch para almacenamiento y búsqueda
+  - Logstash para procesamiento de logs
+  - Kibana para visualización
+  - Políticas de retención de logs
+  - Logs estructurados en JSON
 
 ## Requisitos
 
 - Docker y Docker Compose
-- (Opcional) Python 3.8+ y Node.js si quieres correr FE/BE fuera de Docker
+- Git
 
-## Instalación y ejecución rápida
+- Python 3.9+ (para desarrollo backend)
 
-1. **Clona el repositorio:**
-   ```bash
-   git clone <url-del-repositorio>
-   cd <nombre-del-directorio>
-   ```
+## Instalación
 
-2. **Levanta todo con Docker Compose:**
-   ```bash
-   docker-compose up --build
-   ```
+1. Clonar el repositorio:
+```bash
+git clone https://github.com/santiagoaux/product-system-management.git
+cd product-system-management
+```
 
-3. **Accede a:**
-   - **Frontend:** http://localhost:8080
-   - **Backend (API):** http://localhost:5000
-   - **Kibana:** http://localhost:5601
-   - **Elasticsearch:** http://localhost:9200
+2. Configurar variables de entorno:
+```bash
+cp .env.example .env
+# Editar .env con tus configuraciones
+```
 
-## Scripts de inicialización
+3. Iniciar los servicios:
+```bash
+docker-compose up -d
+```
 
-- El archivo `init.sql` crea la estructura de la base de datos y agrega datos de ejemplo (productos, proveedores, categorías, usuario admin, etc.).
+## Estructura del Proyecto
 
-## Casos de uso funcionales
+```
+.
+├── backend/                 # Aplicación Flask
+│   ├── app.py              # Punto de entrada principal
+│   ├── logging_config.py   # Configuración de logging
+│   ├── requirements.txt    # Dependencias Python
+│   └── Dockerfile         # Configuración Docker
+├── frontend/               # Aplicación React
+│   ├── src/               # Código fuente
+│   ├── package.json       # Dependencias Node
+│   └── Dockerfile         # Configuración Docker
+├── elasticsearch/          # Configuración Elasticsearch
+│   ├── config/            # Archivos de configuración
+│   └── init-indices.sh    # Script de inicialización
+├── logstash/              # Configuración Logstash
+│   ├── config/            # Archivos de configuración
+│   └── pipeline/          # Configuración de pipelines
+├── docker-compose.yml     # Configuración de servicios
+└── README.md             # Este archivo
+```
 
-- [x] Registro y edición de productos
-- [x] Gestión de proveedores
-- [x] Creación y seguimiento de órdenes de compra
-- [x] Control de stock y alertas de reorden
-- [x] Gestión de usuarios y roles
-- [x] Manejo de errores y mensajes amigables
-- [x] Visualización de logs y datos en Kibana
+## Servicios
 
-## Logs y monitoreo con ELK
+- **Frontend**: http://localhost:8080
+- **Backend API**: http://localhost:5001
+- **Kibana**: http://localhost:5601
+- **Elasticsearch**: http://localhost:9200
 
-- Todos los eventos importantes y logs del backend se envían a Elasticsearch.
-- Puedes visualizar logs y datos en tiempo real desde **Kibana**.
-- Dashboards y visualizaciones personalizadas para productos, proveedores y órdenes.
+## Imágenes DockerHub
 
-## Visualizaciones recomendadas en Kibana
+Las imágenes están disponibles en DockerHub bajo el usuario `santiagoaux`:
 
-- **Productos por categoría** (gráfico de barras)
-- **Stock de productos** (gráfico de barras)
-- **Órdenes por estado** (gráfico circular)
-- **Proveedores registrados por nombre** (gráfico de barras)
-- **Alertas de stock bajo** (tabla)
-- **Logs de acciones y errores** (Discover)
+- Backend: `santiagoaux/product-system-backend:1.0.1`
+- Frontend: `santiagoaux/product-system-frontend:1.0.1`
 
-## Usuarios de prueba
+## Logging
 
-- **Admin:**  
-  - Usuario: `admin`  
-  - Contraseña: `admin123`
-- Puedes crear más usuarios desde la interfaz o la API.
+El sistema utiliza el stack ELK para el manejo centralizado de logs:
 
-## Pruebas y validaciones
+1. **Backend**: Los logs se envían a Logstash usando un handler personalizado
+2. **Logstash**: Procesa y enriquece los logs
+3. **Elasticsearch**: Almacena los logs con políticas de retención
+4. **Kibana**: Visualiza y analiza los logs
 
-- Todos los flujos principales han sido validados.
-- Manejo de errores y mensajes claros para el usuario.
-- Roles y permisos probados.
+### Configuración de Logging
 
-## Cómo contribuir
+- Los logs se envían en formato JSON
+- Se incluye información contextual (timestamp, nivel, logger, etc.)
 
-1. Haz un fork del repositorio.
-2. Crea una rama para tu feature (`git checkout -b feature/NuevaFeature`)
-3. Haz commit de tus cambios.
-4. Abre un Pull Request.
+- Índices diarios con el formato `product-system-logs-YYYY.MM.DD`
+
+### Visualización en Kibana
+
+1. Acceder a Kibana (http://localhost:5601)
+2. Crear patrón de índice para `product-system-logs-*`
+3. Explorar logs en la sección "Discover"
+4. Crear dashboards personalizados
+
+## Casos de Uso Funcionales
+
+1. **Gestión de Productos**: Alta, baja, modificación y consulta de productos. Validación de stock, unicidad de nombre/código, y reglas de negocio para categorías.
+2. **Gestión de Categorías**: CRUD de categorías, asociación de productos, validación de duplicados y dependencias.
+3. **Gestión de Proveedores**: Alta, baja, modificación y consulta de proveedores. Validación de datos de contacto y reglas de negocio para productos asociados.
+4. **Gestión de Movimientos de Stock**: Registro de entradas y salidas de inventario, actualización manual de stock, validación de cantidades y motivos de movimiento (compra, venta, ajuste, etc.).
+5. **Gestión de Órdenes de Compra**: Creación, actualización y seguimiento de órdenes. Validación de stock, reglas de negocio para estados y notificaciones.
+6. **Búsqueda y Filtrado de Productos**: Búsqueda por nombre, categoría o proveedor, y filtrado avanzado para facilitar la gestión y localización de productos en el sistema.
+
 
 ## Licencia
 
-Este proyecto está bajo la Licencia MIT. 
+Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
+
+## Contacto
+
+Santiago Aux - [@santiagoaux](https://github.com/santiagoaux)
+
+Link del proyecto: [https://github.com/santiagoaux/product-system-management](https://github.com/santiagoaux/product-system-management) 

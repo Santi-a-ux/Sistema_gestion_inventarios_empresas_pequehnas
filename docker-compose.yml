@@ -2,32 +2,40 @@ version: '3.8'
 
 services:
   frontend:
-    build: 
-      context: ./frontend
+    image: santiagoaux/product-system-frontend:1.0.1
     ports:
       - "8080:80"
     depends_on:
       - backend
     networks:
       - app-network
+    restart: unless-stopped
 
   backend:
-    build: 
-      context: ./backend
-    ports:
-      - "5000:5000"
+    image: santiagoaux/product-system-backend:1.0.1
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/inventario
       - FLASK_APP=app.py
-      - FLASK_ENV=development
+      - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
-    volumes:
-      - ./backend:/app
+      - LOG_LEVEL=INFO
+      - SECRET_KEY=mi_clave_secreta_super_segura_123
+      - API_TOKEN=mi_token_api_super_seguro_456
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - LOGSTASH_HOST=logstash
+      - LOGSTASH_PORT=5000
+    ports:
+      - "5001:5000"
     depends_on:
       db:
         condition: service_healthy
+      elasticsearch:
+        condition: service_started
+      logstash:
+        condition: service_healthy
     networks:
       - app-network
+    restart: unless-stopped
 
   db:
     image: postgres:15
@@ -41,12 +49,13 @@ services:
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -d inventario -c 'SELECT 1'"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
       - app-network
+    restart: unless-stopped
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
@@ -54,25 +63,78 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+      - ./elasticsearch/init-indices.sh:/usr/local/bin/init-indices.sh:ro
     ports:
       - "9200:9200"
     networks:
       - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s --fail http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    command: >
+      bash -c "
+        /usr/local/bin/docker-entrypoint.sh &
+        sleep 30 &&
+        chmod +x /usr/local/bin/init-indices.sh &&
+        /usr/local/bin/init-indices.sh
+      "
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.4
+    volumes:
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+    environment:
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+    ports:
+      - "5044:5044"
+      - "5000:5000/tcp"
+      - "5000:5000/udp"
+      - "9600:9600"
+    depends_on:
+      - elasticsearch
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s --fail http://localhost:9600/?pretty || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - XPACK_SECURITY_ENABLED=false
+    volumes:
+      - kibana_data:/usr/share/kibana/data
     ports:
       - "5601:5601"
     depends_on:
       - elasticsearch
+      - logstash
     networks:
       - app-network
+    restart: unless-stopped
 
 networks:
   app-network:
     driver: bridge
 
 volumes:
-  postgres_data: 
+  postgres_data:
+  elasticsearch_data:
+  kibana_data: 

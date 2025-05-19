@@ -64,12 +64,25 @@ ON CONFLICT (username) DO NOTHING;
 
 -- Insertar categorías de ejemplo
 INSERT INTO categoria (nombre_categoria) VALUES
-('Electrónica'), ('Ropa'), ('Alimentos')
+('Electrónica'), ('Ropa'), ('Alimentos'), ('Hogar'), ('Deportes')
 ON CONFLICT DO NOTHING;
 
 -- Insertar productos de ejemplo
 INSERT INTO producto (nombre, sku, precio_costo, precio_venta, descripcion, cantidad, umbral_reorden, categoria_id, fecha_creacion, fecha_actualizacion)
 VALUES
-('Laptop', 'SKU001', 500, 700, 'Laptop de ejemplo', 10, 2, 1, NOW(), NOW()),
-('Camiseta', 'SKU002', 5, 10, 'Camiseta de algodón', 50, 10, 2, NOW(), NOW())
+('Laptop HP', 'SKU001', 500, 700, 'Laptop HP de última generación', 10, 2, 1, NOW(), NOW()),
+('Camiseta Nike', 'SKU002', 5, 10, 'Camiseta Nike de algodón', 50, 10, 2, NOW(), NOW()),
+('Arroz 1kg', 'SKU003', 2, 3, 'Arroz blanco premium', 100, 20, 3, NOW(), NOW()),
+('Sofá 3 plazas', 'SKU004', 300, 450, 'Sofá moderno 3 plazas', 5, 2, 4, NOW(), NOW()),
+('Balón de fútbol', 'SKU005', 15, 25, 'Balón profesional', 30, 5, 5, NOW(), NOW())
+ON CONFLICT DO NOTHING;
+
+-- Insertar proveedores de ejemplo
+INSERT INTO proveedor (nombre, email, telefono)
+VALUES
+('Tech Supplies', 'tech@example.com', '123-456-7890'),
+('Ropa Express', 'ropa@example.com', '234-567-8901'),
+('Alimentos SA', 'alimentos@example.com', '345-678-9012'),
+('Muebles y Más', 'muebles@example.com', '456-789-0123'),
+('Deportes Pro', 'deportes@example.com', '567-890-1234')
 ON CONFLICT DO NOTHING; 
