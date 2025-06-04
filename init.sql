@@ -6,10 +6,10 @@ CREATE TABLE IF NOT EXISTS usuario (
     rol VARCHAR(20) NOT NULL
 );
 
--- Crear tabla de categorías
+-- Crear tabla de categorías con restricción UNIQUE
 CREATE TABLE IF NOT EXISTS categoria (
     id SERIAL PRIMARY KEY,
-    nombre_categoria VARCHAR(100) NOT NULL
+    nombre_categoria VARCHAR(100) NOT NULL UNIQUE
 );
 
 -- Crear tabla de productos
@@ -75,7 +75,7 @@ ON CONFLICT (username) DO NOTHING;
 -- Insertar categorías de ejemplo
 INSERT INTO categoria (nombre_categoria) VALUES
 ('Electrónica'), ('Ropa'), ('Alimentos'), ('Hogar'), ('Deportes')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (nombre_categoria) DO NOTHING;
 
 -- Insertar productos de ejemplo
 INSERT INTO producto (nombre, sku, precio_costo, precio_venta, descripcion, cantidad, umbral_reorden, categoria_id, fecha_creacion, fecha_actualizacion)
