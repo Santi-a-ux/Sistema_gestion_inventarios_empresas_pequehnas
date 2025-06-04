@@ -1,5 +1,5 @@
 # Use Python 3.9 slim as base image
-FROM python:3.9
+FROM python:3.9-slim
 
 # Set working directory
 WORKDIR /app
@@ -20,14 +20,12 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all Python files first
+# Copy all Python files
 COPY *.py .
-
-# Make test script executable
-RUN chmod +x test_logging.py
+COPY migrations/ ./migrations/
 
 # Expose port
 EXPOSE 5000
 
-# Run the application with Gunicorn
-CMD ["gunicorn", "--preload", "-b", "0.0.0.0:5000", "app:app", "--log-level=info", "--capture-output", "--access-logfile=-", "--error-logfile=-", "--logger-class=gunicorn.glogging.Logger"] 
+# Run the application
+CMD ["python", "app.py"]

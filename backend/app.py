@@ -5,19 +5,35 @@ from datetime import datetime
 import os
 from flask_migrate import Migrate
 import logging
-from logging.handlers import RotatingFileHandler
-from pythonjsonlogger import jsonlogger
 from marshmallow import Schema, fields, validate, ValidationError
 from functools import wraps
 import secrets
-from logging_config import setup_logging
+from werkzeug.security import generate_password_hash, check_password_hash
+import jwt
+from datetime import timedelta
+import traceback
+
+# Configurar logging básico
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger()
+
+try:
+    import logstash
+    LOGSTASH_HOST = os.getenv("LOGSTASH_HOST")
+    LOGSTASH_PORT = int(os.getenv("LOGSTASH_PORT", "5000"))
+    if LOGSTASH_HOST:
+        logstash_handler = logstash.TCPLogstashHandler(LOGSTASH_HOST, LOGSTASH_PORT, version=1)
+        logger.addHandler(logstash_handler)
+        logger.info(f"LogstashHandler inicializado para {LOGSTASH_HOST}:{LOGSTASH_PORT}")
+except Exception as e:
+    logger.warning(f"No se pudo inicializar LogstashHandler: {e}")
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["http://localhost:8080", "http://127.0.0.1:8080"])
 
-# Configurar logging primero
-setup_logging()
-logger = logging.getLogger()  # Logger raíz
+@app.route('/api/health')
+def health_check():
+    return jsonify({"status": "healthy"}), 200
 
 # Configuración de seguridad
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', secrets.token_hex(32))
@@ -92,12 +108,15 @@ def not_found_error(error):
 
 @app.errorhandler(500)
 def internal_error(error):
-    logger.error(f"Error interno del servidor: {str(error)}", extra={
-        'type': 'server_error',
-        'error': str(error),
-        'path': request.path,
-        'method': request.method
-    })
+    logger.error(
+        f"Error interno del servidor: {str(error)}\n{traceback.format_exc()}",
+        extra={
+            'type': 'server_error',
+            'error': str(error),
+            'path': request.path,
+            'method': request.method
+        }
+    )
     return jsonify({"error": "Error interno del servidor"}), 500
 
 @app.errorhandler(400)
@@ -254,6 +273,22 @@ class MovimientoInventario(db.Model):
             'usuario': self.usuario or ''
         }
 
+class Usuario(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    rol = db.Column(db.String(20), nullable=False)
+
+    def verify_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'username': self.username,
+            'rol': self.rol
+        }
+
 # Schemas de validación
 class ProductoSchema(Schema):
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=100))
@@ -282,6 +317,27 @@ producto_schema = ProductoSchema()
 orden_compra_schema = OrdenCompraSchema()
 movimiento_schema = MovimientoSchema()
 
+def require_jwt(role=None):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return jsonify({'error': 'Token JWT requerido'}), 401
+            token = auth_header.split(' ')[1]
+            try:
+                payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            except jwt.ExpiredSignatureError:
+                return jsonify({'error': 'Token expirado'}), 401
+            except jwt.InvalidTokenError:
+                return jsonify({'error': 'Token inválido'}), 401
+            if role and payload.get('rol') != role:
+                return jsonify({'error': 'Permisos insuficientes'}), 403
+            request.user = payload
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
 # Endpoints de Categorías
 @app.route('/api/categorias', methods=['GET'])
 def obtener_categorias():
@@ -294,6 +350,7 @@ def obtener_categoria(id):
     return jsonify(categoria.to_dict())
 
 @app.route('/api/categorias', methods=['POST'])
+@require_jwt('admin')
 def crear_categoria():
     data = request.json
     nueva = Categoria(nombre_categoria=data['nombre_categoria'])
@@ -302,6 +359,7 @@ def crear_categoria():
     return jsonify(nueva.to_dict()), 201
 
 @app.route('/api/categorias/<int:id>', methods=['PUT'])
+@require_jwt('admin')
 def actualizar_categoria(id):
     data = request.json
     categoria = Categoria.query.get_or_404(id)
@@ -310,6 +368,7 @@ def actualizar_categoria(id):
     return jsonify(categoria.to_dict())
 
 @app.route('/api/categorias/<int:id>', methods=['DELETE'])
+@require_jwt('admin')
 def eliminar_categoria(id):
     categoria = Categoria.query.get_or_404(id)
     db.session.delete(categoria)
@@ -361,7 +420,6 @@ def obtener_producto(id):
         return jsonify({"error": "Error al obtener producto"}), 500
 
 @app.route('/api/productos', methods=['POST'])
-@require_token
 def crear_producto():
     logger.info("Iniciando creación de producto", extra={
         'type': 'product_creation',
@@ -440,6 +498,7 @@ def crear_producto():
         return jsonify({"error": f"Error interno del servidor: {str(e)}"}), 500
 
 @app.route('/api/productos/<int:id>', methods=['PUT'])
+@require_jwt('admin')
 def actualizar_producto(id):
     logger.info(f"Actualizando producto con ID: {id}", extra={
         'type': 'product_update',
@@ -492,6 +551,7 @@ def actualizar_producto(id):
         return jsonify({"error": "Error al actualizar producto"}), 500
 
 @app.route('/api/productos/<int:id>', methods=['DELETE'])
+@require_jwt('admin')
 def eliminar_producto(id):
     logger.info(f"Eliminando producto con ID: {id}", extra={
         'type': 'product_delete',
@@ -528,6 +588,7 @@ def obtener_proveedor(id):
     return jsonify(proveedor.to_dict())
 
 @app.route('/api/proveedores', methods=['POST'])
+@require_jwt('admin')
 def crear_proveedor():
     data = request.json
     nuevo = Proveedor(
@@ -540,6 +601,7 @@ def crear_proveedor():
     return jsonify(nuevo.to_dict()), 201
 
 @app.route('/api/proveedores/<int:id>', methods=['PUT'])
+@require_jwt('admin')
 def actualizar_proveedor(id):
     data = request.json
     proveedor = Proveedor.query.get_or_404(id)
@@ -550,6 +612,7 @@ def actualizar_proveedor(id):
     return jsonify(proveedor.to_dict())
 
 @app.route('/api/proveedores/<int:id>', methods=['DELETE'])
+@require_jwt('admin')
 def eliminar_proveedor(id):
     proveedor = Proveedor.query.get_or_404(id)
     db.session.delete(proveedor)
@@ -568,6 +631,7 @@ def obtener_orden_compra(id):
     return jsonify(orden.to_dict())
 
 @app.route('/api/ordenes-compra', methods=['POST'])
+@require_jwt('admin')
 def crear_orden_compra():
     try:
         data = request.json
@@ -608,41 +672,55 @@ def crear_orden_compra():
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error al crear orden de compra: {str(e)}")
+        print("ERROR REAL:", str(e))  # <-- AGREGA ESTO TEMPORALMENTE
         return jsonify({"error": "Error al crear la orden de compra"}), 500
 
 @app.route('/api/ordenes-compra/<int:id>', methods=['PUT'])
+@require_jwt('admin')
 def actualizar_orden_compra(id):
     data = request.json
     orden = OrdenCompra.query.get_or_404(id)
-    
-    orden.proveedor_id = data['proveedor_id']
-    orden.fecha_entrega = datetime.fromisoformat(data['fecha_entrega']) if data.get('fecha_entrega') else None
-    orden.estado = data.get('estado', orden.estado)
-    
-    # Eliminar items existentes
-    for item in orden.items:
-        db.session.delete(item)
-    
-    # Agregar nuevos items
-    total = 0
-    for item_data in data['items']:
-        producto = Producto.query.get_or_404(item_data['producto_id'])
-        subtotal = item_data['cantidad'] * item_data['precio_unitario']
-        item = OrdenCompraItem(
-            orden_compra_id=orden.id,
-            producto_id=producto.id,
-            cantidad=item_data['cantidad'],
-            precio_unitario=item_data['precio_unitario'],
-            subtotal=subtotal
-        )
-        orden.items.append(item)
-        total += subtotal
-    
-    orden.total = total
+
+    # Si solo se envía 'estado' (o si solo se quiere actualizar el estado)
+    if 'estado' in data and len(data.keys()) == 1:
+        orden.estado = data['estado']
+        db.session.commit()
+        return jsonify(orden.to_dict())
+
+    # Si se envían más campos, realiza la actualización completa
+    if 'proveedor_id' in data:
+        orden.proveedor_id = data['proveedor_id']
+    if 'fecha_entrega' in data:
+        orden.fecha_entrega = datetime.fromisoformat(data['fecha_entrega']) if data.get('fecha_entrega') else None
+    if 'estado' in data:
+        orden.estado = data['estado']
+
+    # Si se envían items, actualiza los items
+    if 'items' in data:
+        # Eliminar items existentes
+        for item in orden.items:
+            db.session.delete(item)
+        # Agregar nuevos items
+        total = 0
+        for item_data in data['items']:
+            producto = Producto.query.get_or_404(item_data['producto_id'])
+            subtotal = item_data['cantidad'] * item_data['precio_unitario']
+            item = OrdenCompraItem(
+                orden_compra_id=orden.id,
+                producto_id=producto.id,
+                cantidad=item_data['cantidad'],
+                precio_unitario=item_data['precio_unitario'],
+                subtotal=subtotal
+            )
+            orden.items.append(item)
+            total += subtotal
+        orden.total = total
+
     db.session.commit()
     return jsonify(orden.to_dict())
 
 @app.route('/api/ordenes-compra/<int:id>', methods=['DELETE'])
+@require_jwt('admin')
 def eliminar_orden_compra(id):
     orden = OrdenCompra.query.get_or_404(id)
     db.session.delete(orden)
@@ -652,74 +730,80 @@ def eliminar_orden_compra(id):
 @app.route('/api/reportes/movimientos')
 def obtener_movimientos():
     from datetime import datetime
-    fecha_inicio = request.args.get('fecha_inicio')
-    fecha_fin = request.args.get('fecha_fin')
-    query = MovimientoInventario.query
+    try:
+        fecha_inicio = request.args.get('fecha_inicio')
+        fecha_fin = request.args.get('fecha_fin')
+        query = MovimientoInventario.query
 
-    if fecha_inicio:
-        query = query.filter(MovimientoInventario.fecha >= datetime.fromisoformat(fecha_inicio))
-    if fecha_fin:
-        query = query.filter(MovimientoInventario.fecha <= datetime.fromisoformat(fecha_fin))
+        if fecha_inicio:
+            query = query.filter(MovimientoInventario.fecha >= datetime.fromisoformat(fecha_inicio))
+        if fecha_fin:
+            query = query.filter(MovimientoInventario.fecha <= datetime.fromisoformat(fecha_fin))
 
-    movimientos = query.order_by(MovimientoInventario.fecha.desc()).all()
-    return jsonify([m.to_dict() for m in movimientos])
+        movimientos = query.order_by(MovimientoInventario.fecha.desc()).all()
+        return jsonify([m.to_dict() for m in movimientos])
+    except Exception as e:
+        print("ERROR REAL EN REPORTE:", str(e))
+        return jsonify({"error": "Error al obtener movimientos"}), 500
 
 @app.route('/api/movimientos', methods=['POST'])
 def registrar_movimiento():
     try:
         data = request.json
-        logger.info(f"Registrando movimiento de inventario para producto: {data['producto_id']}")
-        
-        with db.session.begin_nested():
-            producto = Producto.query.get_or_404(data['producto_id'])
-            tipo = data['tipo']
-            cantidad = int(data['cantidad'])
-            usuario = data.get('usuario', 'admin')
+        producto = Producto.query.get_or_404(data['producto_id'])
+        tipo = data['tipo']
+        cantidad = int(data['cantidad'])
+        usuario = data.get('usuario', 'admin')
 
-            if tipo in ['venta', 'uso']:
-                if producto.cantidad < cantidad:
-                    raise ValueError('Stock insuficiente')
-                producto.cantidad -= cantidad
-            elif tipo == 'ajuste_manual':
-                producto.cantidad += cantidad
-            else:
-                raise ValueError('Tipo de movimiento no soportado')
+        if tipo == 'entrada':
+            producto.cantidad += cantidad
+        elif tipo in ['venta', 'salida', 'uso']:
+            if producto.cantidad < cantidad:
+                return jsonify({"error": "Stock insuficiente"}), 400
+            producto.cantidad -= cantidad
+        else:
+            return jsonify({"error": "Tipo de movimiento no válido"}), 400
 
-            movimiento = MovimientoInventario(
-                producto_id=producto.id,
-                tipo=tipo,
-                cantidad=cantidad,
-                usuario=usuario
-            )
-            db.session.add(movimiento)
-            
+        movimiento = MovimientoInventario(
+            producto_id=producto.id,
+            tipo=tipo,
+            cantidad=cantidad,
+            usuario=usuario
+        )
+        db.session.add(movimiento)
         db.session.commit()
-        logger.info(f"Movimiento registrado exitosamente: {movimiento.id}")
         return jsonify(movimiento.to_dict()), 201
-        
-    except ValueError as ve:
-        db.session.rollback()
-        logger.error(f"Error de validación en movimiento: {str(ve)}")
-        return jsonify({"error": str(ve)}), 400
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error al registrar movimiento: {str(e)}")
-        return jsonify({"error": "Error al registrar el movimiento"}), 500
 
-def post_fork(server, worker):
-    from logging_config import setup_logging
-    setup_logging()
-    print(f"Reconfigurando logging en el worker PID: {os.getpid()}")
-
-# Si se está ejecutando bajo Gunicorn, registra el hook post_fork
-gunicorn_software = os.environ.get("SERVER_SOFTWARE", "")
-if "gunicorn" in gunicorn_software:
-    try:
-        import gunicorn.app.base
-        gunicorn.app.base.Worker.post_fork = staticmethod(post_fork)
     except Exception as e:
-        print(f"Error registrando post_fork: {e}")
+        print("ERROR REAL EN MOVIMIENTO:", str(e))
+        db.session.rollback()
+        return jsonify({"error": "Error al registrar movimiento"}), 500
+
+# Utilidad para crear JWT
+def create_jwt(user):
+    payload = {
+        'user_id': user.id,
+        'username': user.username,
+        'rol': user.rol,
+        'exp': datetime.utcnow() + timedelta(hours=8)
+    }
+    token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
+    return token
+
+# Endpoint de login
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    if not username or not password:
+        return jsonify({'error': 'Usuario y contraseña requeridos'}), 400
+    user = Usuario.query.filter_by(username=username).first()
+    if not user or not user.verify_password(password):
+        return jsonify({'error': 'Credenciales inválidas'}), 401
+    token = create_jwt(user)
+    return jsonify({'token': token, 'user': user.to_dict()})
 
 if __name__ == '__main__':
     logger.info("Iniciando aplicación")
-    app.run(host='0.0.0.0', port=5000) 
+    app.run(host='0.0.0.0', port=5000, debug=False)
