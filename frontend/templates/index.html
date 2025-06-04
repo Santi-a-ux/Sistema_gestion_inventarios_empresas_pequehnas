@@ -35,6 +35,17 @@
                             <a class="nav-link" href="#" data-section="reportes">Reportes</a>
                         </li>
                     </ul>
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item" id="loginNavItem">
+                            <button class="btn btn-outline-light" id="btnLogin" data-bs-toggle="modal" data-bs-target="#loginModal">Iniciar sesión</button>
+                        </li>
+                        <li class="nav-item d-none" id="logoutNavItem">
+                            <button class="btn btn-outline-warning" id="btnLogout">Cerrar sesión</button>
+                        </li>
+                        <li class="nav-item">
+                            <span class="navbar-text" id="adminUserLabel"></span>
+                        </li>
+                    </ul>
                 </div>
             </div>
         </nav>
@@ -47,12 +58,7 @@
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h1>Inventario</h1>
                     <div>
-                        <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#importarCSVModal">
-                            <i class="bi bi-file-earmark-arrow-up"></i> Importar CSV
-                        </button>
-                        <button class="btn btn-info me-2" id="btnExportarCSV">
-                            <i class="bi bi-file-earmark-arrow-down"></i> Exportar CSV
-                        </button>
+                        <!-- Botones de Importar y Exportar CSV eliminados -->
                         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nuevoProductoModal">
                             <i class="bi bi-plus-circle"></i> Nuevo Producto
                         </button>
@@ -242,6 +248,37 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Registrar Movimiento de Inventario -->
+            <div class="card mt-4">
+                <div class="card-header">Registrar Movimiento de Inventario</div>
+                <div class="card-body">
+                    <form id="formMovimientoInventario">
+                        <div class="mb-2">
+                            <label for="productoMovimiento" class="form-label">Producto</label>
+                            <select id="productoMovimiento" class="form-select" required></select>
+                        </div>
+                        <div class="mb-2">
+                            <label for="tipoMovimiento" class="form-label">Tipo</label>
+                            <select id="tipoMovimiento" class="form-select" required>
+                                <option value="venta">Venta</option>
+                                <option value="entrada">Entrada</option>
+                                <option value="salida">Salida</option>
+                                <option value="uso">Uso</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label for="cantidadMovimiento" class="form-label">Cantidad</label>
+                            <input type="number" id="cantidadMovimiento" class="form-control" min="1" required>
+                        </div>
+                        <div class="mb-2">
+                            <label for="usuarioMovimiento" class="form-label">Usuario</label>
+                            <input type="text" id="usuarioMovimiento" class="form-control" value="admin" required>
+                        </div>
+                        <button type="submit" class="btn btn-success">Registrar Movimiento</button>
+                    </form>
+                </div>
+            </div>
         </div>
 
         <!-- Modals -->
@@ -293,61 +330,6 @@
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                             <button type="submit" class="btn btn-primary">Guardar</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- Editar Producto Modal -->
-        <div class="modal fade" id="editarProductoModal" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <form id="editarProductoForm">
-                        <input type="hidden" id="editId">
-                        <div class="modal-header">
-                            <h5 class="modal-title">Editar Producto</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="mb-3">
-                                <label for="editNombre" class="form-label">Nombre del Producto *</label>
-                                <input type="text" class="form-control" id="editNombre" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="editSku" class="form-label">SKU *</label>
-                                <input type="text" class="form-control" id="editSku" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="editCategoria" class="form-label">Categoría</label>
-                                <select class="form-select" id="editCategoria">
-                                    <option value="">Sin categoría</option>
-                                </select>
-                            </div>
-                            <div class="mb-3">
-                                <label for="editPrecioCosto" class="form-label">Precio de Costo *</label>
-                                <input type="number" class="form-control" id="editPrecioCosto" step="0.01" min="0" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="editPrecioVenta" class="form-label">Precio de Venta *</label>
-                                <input type="number" class="form-control" id="editPrecioVenta" step="0.01" min="0" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="editDescripcion" class="form-label">Descripción</label>
-                                <textarea class="form-control" id="editDescripcion" rows="3"></textarea>
-                            </div>
-                            <div class="mb-3">
-                                <label for="editCantidad" class="form-label">Cantidad</label>
-                                <input type="number" class="form-control" id="editCantidad" min="0">
-                            </div>
-                            <div class="mb-3">
-                                <label for="editUmbral" class="form-label">Umbral de Reorden</label>
-                                <input type="number" class="form-control" id="editUmbral" min="0">
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                            <button type="submit" class="btn btn-primary">Actualizar</button>
                         </div>
                     </form>
                 </div>
@@ -411,31 +393,6 @@
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                             <button type="submit" class="btn btn-primary">Guardar</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- Editar Categoría Modal -->
-        <div class="modal fade" id="editarCategoriaModal" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <form id="editarCategoriaForm">
-                        <input type="hidden" id="editId">
-                        <div class="modal-header">
-                            <h5 class="modal-title">Editar Categoría</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="mb-3">
-                                <label for="editNombreCategoria" class="form-label">Nombre de la Categoría *</label>
-                                <input type="text" class="form-control" id="editNombreCategoria" required>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                            <button type="submit" class="btn btn-primary">Actualizar</button>
                         </div>
                     </form>
                 </div>
@@ -516,7 +473,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <button type="button" class="btn btn-secondary mt-2" id="btnAgregarItem">
+                            <button type="button" class="btn btn-secondary mt-2" onclick="agregarItemOrden()">
                                 <i class="bi bi-plus-circle"></i> Agregar Item
                             </button>
                         </div>
@@ -529,83 +486,77 @@
             </div>
         </div>
 
-        <!-- Importar CSV Modal -->
-        <div class="modal fade" id="importarCSVModal" tabindex="-1">
+        
+
+        <!-- Modal de Login CORREGIDO -->
+        <div class="modal fade" id="loginModal" tabindex="-1">
             <div class="modal-dialog">
                 <div class="modal-content">
-                    <form id="importarCSVForm">
+                    <form id="loginForm">
                         <div class="modal-header">
-                            <h5 class="modal-title">Importar Productos desde CSV</h5>
+                            <h5 class="modal-title">Iniciar Sesión</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
                             <div class="mb-3">
-                                <label for="csvFile" class="form-label">Archivo CSV</label>
-                                <input type="file" class="form-control" id="csvFile" accept=".csv" required>
+                                <label for="loginUsername" class="form-label">Usuario</label>
+                                <input type="text" class="form-control" id="loginUsername" required>
                             </div>
-                            <div class="alert alert-info">
-                                <h6>Formato del CSV:</h6>
-                                <p>El archivo debe contener las siguientes columnas:</p>
-                                <ul>
-                                    <li>nombre (requerido)</li>
-                                    <li>sku (requerido)</li>
-                                    <li>precio_costo (requerido)</li>
-                                    <li>precio_venta (requerido)</li>
-                                    <li>descripcion (opcional)</li>
-                                    <li>cantidad (opcional, default: 0)</li>
-                                    <li>umbral_reorden (opcional, default: 10)</li>
-                                    <li>categoria_id (opcional)</li>
-                                </ul>
+                            <div class="mb-3">
+                                <label for="loginPassword" class="form-label">Contraseña</label>
+                                <input type="password" class="form-control" id="loginPassword" required>
                             </div>
+                            <div class="alert alert-danger d-none" id="loginError"></div>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                            <button type="submit" class="btn btn-primary">Importar</button>
+                            <button type="submit" class="btn btn-primary">Iniciar Sesión</button>
                         </div>
                     </form>
                 </div>
             </div>
         </div>
+
+        <!-- Modal Detalle de Orden de Compra -->
+        <div class="modal fade" id="detalleOrdenModal" tabindex="-1">
+          <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Detalle de Orden de Compra</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body">
+                <div id="detalleOrdenInfo" class="mb-3"></div>
+                <div class="table-responsive">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>Precio Unitario</th>
+                        <th>Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody id="detalleOrdenItems"></tbody>
+                    <tfoot>
+                      <tr>
+                        <th colspan="3" class="text-end">Total</th>
+                        <th id="detalleOrdenTotal"></th>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+              </div>
+            </div>
+          </div>
+        </div>
     </div>
 
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/main.js"></script>
-    <script>
-        // Esperar a que el DOM y main.js estén cargados
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('btnAgregarItem').addEventListener('click', () => {
-                const nuevaFila = document.createElement('div');
-                nuevaFila.className = 'row mb-2';
-                nuevaFila.innerHTML = `
-                    <div class="col-md-4">
-                        <select class="form-select item-producto">
-                            <option value="">Seleccione un producto</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <input type="number" class="form-control item-cantidad" placeholder="Cantidad" min="1">
-                    </div>
-                    <div class="col-md-3">
-                        <input type="number" class="form-control item-precio" placeholder="Precio Unit." step="0.01" min="0">
-                    </div>
-                    <div class="col-md-2">
-                        <button type="button" class="btn btn-danger btn-remove-item">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                `;
-                document.getElementById('itemsOrdenContainer').appendChild(nuevaFila);
-
-                // LLENAR EL SELECT DE PRODUCTOS
-                const selectProducto = nuevaFila.querySelector('.item-producto');
-                llenarSelectProductos(selectProducto);
-            });
-
-            const selectProductoInicial = document.querySelector('#nuevaOrdenCompraModal .item-producto');
-            if (selectProductoInicial) {
-                llenarSelectProductos(selectProductoInicial);
-            }
-        });
-    </script>
 </body>
-</html> 
+</html>

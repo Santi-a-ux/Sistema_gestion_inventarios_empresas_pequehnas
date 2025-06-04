@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS orden_compra_item (
     subtotal NUMERIC(10, 2) NOT NULL
 );
 
+-- Crear tabla de movimientos de inventario
+CREATE TABLE IF NOT EXISTS movimiento_inventario (
+    id SERIAL PRIMARY KEY,
+    producto_id INTEGER REFERENCES producto(id) ON DELETE SET NULL,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    tipo VARCHAR(20) NOT NULL,
+    cantidad INTEGER NOT NULL,
+    usuario VARCHAR(100)
+);
+
 -- Insertar usuario admin (password: admin123)
 INSERT INTO usuario (username, password_hash, rol) VALUES
 ('admin', 'scrypt:32768:8:1$garm1vZBJ2jlacjR$64ce010dbf779e6ba449623f1ece804c99898c488b30a791429d0a4dcd4cbc65bd9aa8704cbf7d77640a90a6f18831914a6f963ce2031e8b961295a3e8e1a948', 'admin')
@@ -85,4 +95,4 @@ VALUES
 ('Alimentos SA', 'alimentos@example.com', '345-678-9012'),
 ('Muebles y Más', 'muebles@example.com', '456-789-0123'),
 ('Deportes Pro', 'deportes@example.com', '567-890-1234')
-ON CONFLICT DO NOTHING; 
+ON CONFLICT DO NOTHING;

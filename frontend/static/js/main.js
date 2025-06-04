@@ -1,8 +1,89 @@
 // Configuración de la API
-const API_URL = 'http://localhost:5001/api';
+const API_URL = window.location.hostname === "localhost"
+  ? "http://localhost:5001/api"
+  : "/api";
 const API_TOKEN = 'mi_token_api_super_seguro_456';  // Este token debe coincidir con el del backend
 
 let productosCargados = [];
+
+// --- LOGIN Y ROLES ---
+const JWT_KEY = 'admin_jwt';
+const USER_KEY = 'admin_user';
+
+function isAdminLoggedIn() {
+    return !!localStorage.getItem(JWT_KEY);
+}
+
+function getAdminUser() {
+    try {
+        return JSON.parse(localStorage.getItem(USER_KEY));
+    } catch {
+        return null;
+    }
+}
+
+function getJWT() {
+    return localStorage.getItem(JWT_KEY);
+}
+
+function setAdminSession(token, user) {
+    localStorage.setItem(JWT_KEY, token);
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+function clearAdminSession() {
+    localStorage.removeItem(JWT_KEY);
+    localStorage.removeItem(USER_KEY);
+}
+
+async function loginAdmin(username, password) {
+    try {
+        const res = await fetch(`${API_URL}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+            throw new Error(data.error || 'Error de autenticación');
+        }
+        
+        if (!data.token || !data.user) {
+            throw new Error('Respuesta inválida del servidor');
+        }
+        
+        setAdminSession(data.token, data.user);
+        return data.user;
+    } catch (error) {
+        console.error('Error en login:', error);
+        throw error;
+    }
+}
+
+function updateUIForRole() {
+    const isAdmin = isAdminLoggedIn();
+    const user = getAdminUser();
+
+    // Mostrar/ocultar login/logout
+    document.getElementById('loginNavItem').classList.toggle('d-none', isAdmin);
+    document.getElementById('logoutNavItem').classList.toggle('d-none', !isAdmin);
+
+    // Mostrar nombre de usuario solo si es admin
+    document.getElementById('adminUserLabel').textContent = isAdmin && user
+        ? `Admin: ${user.username}`
+        : (isAdmin ? '' : 'Empleado');
+
+    // Mostrar/ocultar botones de administración
+    document.querySelectorAll('.admin-only').forEach(btn => {
+        btn.style.display = isAdmin ? '' : 'none';
+    });
+
+    // El botón de "Nuevo Producto" siempre visible
+    const btnNuevoProducto = document.querySelector('[data-bs-target="#nuevoProductoModal"]');
+    if (btnNuevoProducto) btnNuevoProducto.style.display = '';
+}
 
 function showApp() {
     const appContainer = document.getElementById('appContainer');
@@ -31,13 +112,14 @@ function showAlert(message, type = 'success') {
 
 // Función auxiliar para hacer peticiones a la API
 async function apiRequest(url, options = {}) {
-    const defaultOptions = {
-        headers: {
-            'Content-Type': 'application/json',
-            'X-API-Token': API_TOKEN
-        }
+    const defaultHeaders = {
+        'Content-Type': 'application/json',
+        'X-API-Token': API_TOKEN
     };
-    const finalOptions = { ...defaultOptions, ...options };
+    if (isAdminLoggedIn()) {
+        defaultHeaders['Authorization'] = 'Bearer ' + getJWT();
+    }
+    const finalOptions = { ...options, headers: { ...defaultHeaders, ...(options.headers || {}) } };
     console.log('URL de la petición:', url);
     console.log('Método de la petición:', finalOptions.method || 'GET');
     console.log('Headers completos:', finalOptions.headers);
@@ -126,12 +208,14 @@ function mostrarProductos(productos) {
             <td>${producto.umbral_reorden}</td>
             <td>${estado}</td>
             <td>
-                <button class="btn btn-sm btn-warning me-1" onclick="editarProducto(${producto.id})">Editar</button>
-                <button class="btn btn-sm btn-danger" onclick="eliminarProducto(${producto.id})">Eliminar</button>
+                <button class="btn btn-sm btn-danger admin-only" onclick="eliminarProducto(${producto.id})">
+                    <i class="bi bi-trash"></i> Eliminar
+                </button>
             </td>
         `;
         tbody.appendChild(tr);
     });
+    updateUIForRole();
 }
 
 // Cargar productos
@@ -180,11 +264,22 @@ async function editarProducto(id) {
         const producto = productos.find(p => p.id === id);
         if (!producto) throw new Error('Producto no encontrado');
         const form = document.getElementById('editarProductoForm');
-        form.editId.value = producto.id;
+
+        // Llenar el select de categorías y seleccionar la actual
+        await llenarSelectCategorias();
+        if (form.editCategoria) {
+            form.editCategoria.value = producto.categoria_id || '';
+        }
+
+        form.editProductoId.value = producto.id;
         form.editNombre.value = producto.nombre;
+        form.editSKU.value = producto.sku || '';
+        form.editPrecioCosto.value = producto.precio_costo !== undefined ? producto.precio_costo : '';
+        form.editPrecioVenta.value = producto.precio_venta !== undefined ? producto.precio_venta : '';
         form.editDescripcion.value = producto.descripcion || '';
         form.editCantidad.value = producto.cantidad;
         form.editUmbral.value = producto.umbral_reorden;
+
         const modal = new bootstrap.Modal(document.getElementById('editarProductoModal'));
         modal.show();
     } catch (error) {
@@ -197,12 +292,16 @@ window.editarProducto = editarProducto;
 async function manejarEditarProducto(event) {
     event.preventDefault();
     const form = event.target;
-    const id = form.editId.value;
+    const id = form.editProductoId.value;
     const producto = {
         nombre: form.editNombre.value,
+        sku: form.editSKU.value,
+        precio_costo: parseFloat(form.editPrecioCosto.value),
+        precio_venta: parseFloat(form.editPrecioVenta.value),
         descripcion: form.editDescripcion.value,
         cantidad: parseInt(form.editCantidad.value),
-        umbral_reorden: parseInt(form.editUmbral.value)
+        umbral_reorden: parseInt(form.editUmbral.value),
+        categoria_id: form.editCategoria.value || null
     };
     try {
         await actualizarProductoAPI(id, producto);
@@ -228,6 +327,14 @@ async function eliminarProducto(id) {
 }
 window.eliminarProducto = eliminarProducto;
 
+// --- FILTRADO DE PRODUCTOS ---
+
+// 1. Listeners para los filtros (agrega esto en tu DOMContentLoaded)
+document.getElementById('searchNombre').addEventListener('input', filtrarProductos);
+document.getElementById('searchSKU').addEventListener('input', filtrarProductos);
+document.getElementById('searchCategoria').addEventListener('change', filtrarProductos);
+
+// 2. Función de filtrado
 function filtrarProductos() {
     const nombre = document.getElementById('searchNombre').value.toLowerCase();
     const sku = document.getElementById('searchSKU').value.toLowerCase();
@@ -236,23 +343,24 @@ function filtrarProductos() {
     const filtrados = productosCargados.filter(producto => {
         const coincideNombre = producto.nombre.toLowerCase().includes(nombre);
         const coincideSKU = producto.sku && producto.sku.toLowerCase().includes(sku);
-        const coincideCategoria = !categoria || (producto.categoria && producto.categoria == categoria);
+        const coincideCategoria = !categoria || (producto.categoria_id && String(producto.categoria_id) === categoria);
         return coincideNombre && coincideSKU && coincideCategoria;
     });
 
     mostrarProductos(filtrados);
 }
 
+// 3. Llenar el select de categorías correctamente
 async function llenarSelectCategorias() {
     try {
         const categorias = await obtenerCategorias();
         
-        // Llenar el select de búsqueda
+        // Llenar el select de búsqueda (por id)
         const selectBusqueda = document.getElementById('searchCategoria');
         selectBusqueda.innerHTML = '<option value="">Todas las categorías</option>' +
-            categorias.map(cat => `<option value="${cat.nombre_categoria}">${cat.nombre_categoria}</option>`).join('');
+            categorias.map(cat => `<option value="${cat.id}">${cat.nombre_categoria}</option>`).join('');
 
-        // Llenar el select del formulario de nuevo producto
+        // Llenar el select del formulario de nuevo producto (por id)
         const selectNuevoProducto = document.getElementById('categoria');
         if (selectNuevoProducto) {
             selectNuevoProducto.innerHTML = '<option value="">Sin categoría</option>' +
@@ -262,6 +370,8 @@ async function llenarSelectCategorias() {
         showAlert('Error al cargar categorías', 'danger');
     }
 }
+
+
 
 // Obtener categorías
 async function obtenerCategorias() {
@@ -310,15 +420,13 @@ function mostrarCategorias(categorias) {
             <td>${cat.id}</td>
             <td>${cat.nombre_categoria}</td>
             <td>
-                <button class="btn btn-sm btn-warning me-2" onclick="editarCategoria(${cat.id})">
-                    <i class="bi bi-pencil"></i> Editar
-                </button>
-                <button class="btn btn-sm btn-danger" onclick="eliminarCategoria(${cat.id})">
+                <button class="btn btn-sm btn-danger admin-only" onclick="eliminarCategoria(${cat.id})">
                     <i class="bi bi-trash"></i> Eliminar
                 </button>
             </td>
         </tr>
     `).join('');
+    updateUIForRole();
 }
 
 // Manejar envío de nueva categoría
@@ -347,7 +455,7 @@ async function editarCategoria(id) {
         const categoria = categorias.find(c => c.id === id);
         if (!categoria) throw new Error('Categoría no encontrada');
         const form = document.getElementById('editarCategoriaForm');
-        form.editId.value = categoria.id;
+        form.editCategoriaId.value = categoria.id;
         form.editNombreCategoria.value = categoria.nombre_categoria;
         const modal = new bootstrap.Modal(document.getElementById('editarCategoriaModal'));
         modal.show();
@@ -361,7 +469,7 @@ window.editarCategoria = editarCategoria;
 async function manejarEditarCategoria(event) {
     event.preventDefault();
     const form = event.target;
-    const id = form.editId.value;
+    const id = form.editCategoriaId.value;
     const categoria = {
         nombre_categoria: form.editNombreCategoria.value
     };
@@ -438,15 +546,13 @@ function mostrarProveedores(proveedores) {
             <td>${prov.email || ''}</td>
             <td>${prov.telefono || ''}</td>
             <td>
-                <button class="btn btn-sm btn-warning me-2" onclick="editarProveedor(${prov.id})">
-                    <i class="bi bi-pencil"></i> Editar
-                </button>
-                <button class="btn btn-sm btn-danger" onclick="eliminarProveedor(${prov.id})">
+                <button class="btn btn-sm btn-danger admin-only" onclick="eliminarProveedor(${prov.id})">
                     <i class="bi bi-trash"></i> Eliminar
                 </button>
             </td>
         </tr>
     `).join('');
+    updateUIForRole();
 }
 
 // Manejar envío de nuevo proveedor
@@ -477,7 +583,7 @@ async function editarProveedor(id) {
         const proveedor = proveedores.find(p => p.id === id);
         if (!proveedor) throw new Error('Proveedor no encontrado');
         const form = document.getElementById('editarProveedorForm');
-        form.editId.value = proveedor.id;
+        form.editProveedorId.value = proveedor.id;
         form.editNombreProveedor.value = proveedor.nombre;
         form.editEmailProveedor.value = proveedor.email || '';
         form.editTelefonoProveedor.value = proveedor.telefono || '';
@@ -493,7 +599,7 @@ window.editarProveedor = editarProveedor;
 async function manejarEditarProveedor(event) {
     event.preventDefault();
     const form = event.target;
-    const id = form.editId.value;
+    const id = form.editProveedorId.value;
     const proveedor = {
         nombre: form.editNombreProveedor.value,
         email: form.editEmailProveedor.value,
@@ -552,7 +658,17 @@ async function manejarNuevaOrdenCompra(event) {
     event.preventDefault();
     const form = event.target;
     const proveedorId = form.querySelector('select[name="proveedor"]').value;
-    const fechaEntrega = form.querySelector('#fechaEntrega').value;
+    let fechaEntrega = form.querySelector('#fechaEntrega').value;
+
+    // CORRECCIÓN DE FORMATO DE FECHA
+    if (fechaEntrega) {
+        // Si solo viene YYYY-MM-DD, agrega la hora
+        if (!fechaEntrega.includes('T')) {
+            fechaEntrega = fechaEntrega + 'T00:00:00';
+        }
+    } else {
+        fechaEntrega = null;
+    }
 
     // Obtener los items de la orden
     const items = [];
@@ -618,16 +734,17 @@ function mostrarOrdenesCompra(ordenes) {
             <td>${orden.fecha_entrega ? orden.fecha_entrega.split('T')[0] : ''}</td>
             <td>${orden.estado}</td>
             <td>
-                <button class="btn btn-sm btn-warning me-2" onclick="verDetalleOrden(${orden.id})">
+                <button class="btn btn-sm btn-warning me-2 admin-only" onclick="verDetalleOrden(${orden.id})">
                     <i class="bi bi-eye"></i> Ver
                 </button>
-                <button class="btn btn-sm btn-danger" onclick="eliminarOrdenCompra(${orden.id})">
+                <button class="btn btn-sm btn-danger admin-only" onclick="eliminarOrdenCompra(${orden.id})">
                     <i class="bi bi-trash"></i> Eliminar
                 </button>
             </td>
         `;
         tbody.appendChild(tr);
     });
+    updateUIForRole();
 }
 
 async function cargarOrdenesCompra() {
@@ -641,8 +758,8 @@ async function cargarOrdenesCompra() {
 
 async function verDetalleOrden(id) {
     try {
-        const ordenes = await obtenerOrdenesCompra();
-        const orden = ordenes.find(o => o.id === id);
+        // Pide el detalle directamente al backend
+        const orden = await apiRequest(`${API_URL}/ordenes-compra/${id}`);
         console.log('Orden seleccionada:', orden);
         if (!orden) throw new Error('Orden no encontrada');
 
@@ -729,147 +846,247 @@ async function cargarInventarioValorado() {
 }
 
 async function cargarReporteMovimientos() {
-    const fechaInicio = document.getElementById('fechaInicio').value;
-    const fechaFin = document.getElementById('fechaFin').value;
+    console.log('Entrando a cargarReporteMovimientos');
+    console.log('API_URL:', API_URL);
+
+    const fechaInicio = document.getElementById('fechaInicio')?.value;
+    const fechaFin = document.getElementById('fechaFin')?.value;
     let url = `${API_URL}/reportes/movimientos`;
     const params = [];
     if (fechaInicio) params.push(`fecha_inicio=${fechaInicio}`);
     if (fechaFin) params.push(`fecha_fin=${fechaFin}`);
     if (params.length) url += '?' + params.join('&');
 
+    console.log('URL de reporte:', url);
+
     try {
         const response = await fetch(url);
+        console.log('Fetch ejecutado, response:', response);
         if (!response.ok) throw new Error('Error al obtener movimientos');
         const movimientos = await response.json();
+        console.log('Movimientos recibidos:', movimientos);
         mostrarMovimientos(movimientos);
     } catch (error) {
-        showAlert('Error al cargar reporte de movimientos', 'danger');
+        console.error('Error en cargarReporteMovimientos:', error);
+        showAlert('Error al cargar reporte de movimientos: ' + error.message, 'danger');
     }
 }
 
 function mostrarMovimientos(movimientos) {
     const tbody = document.getElementById('ventasUsoBody');
     tbody.innerHTML = '';
-    if (movimientos.length === 0) {
+    if (!Array.isArray(movimientos) || movimientos.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Sin movimientos en este periodo</td></tr>`;
         return;
     }
     movimientos.forEach(mov => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${mov.fecha}</td>
-            <td>${mov.producto}</td>
-            <td>${mov.tipo}</td>
-            <td>${mov.cantidad}</td>
+            <td>${mov.fecha ? mov.fecha.split('T')[0] : ''}</td>
+            <td>${mov.producto || ''}</td>
+            <td>${mov.tipo || ''}</td>
+            <td>${mov.cantidad || ''}</td>
             <td>${mov.usuario || ''}</td>
         `;
         tbody.appendChild(tr);
     });
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-    showApp();
-    await cargarProductos();
-    await llenarSelectCategorias();
-    showSection('inventario');
+document.addEventListener('DOMContentLoaded', () => {
+    updateUIForRole();
+    cargarProductos();
 
-    document.querySelectorAll('.nav-link[data-section]').forEach(link => {
-        link.addEventListener('click', (e) => {
+    // Evento logout
+    document.getElementById('btnLogout').addEventListener('click', () => {
+        clearAdminSession();
+        updateUIForRole();
+        showApp();
+        cargarProductos();
+    });
+
+    // Evento login
+    document.getElementById('loginForm').addEventListener('submit', async function(event) {
+        event.preventDefault();
+        const username = document.getElementById('loginUsername').value;
+        const password = document.getElementById('loginPassword').value;
+        const loginError = document.getElementById('loginError');
+        try {
+            await loginAdmin(username, password);
+            updateUIForRole();
+            showApp();
+            cargarProductos();
+            // Cierra el modal de login
+            const loginModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('loginModal'));
+            loginModal.hide();
+            // Limpia errores
+            loginError.classList.add('d-none');
+            loginError.textContent = '';
+            // --- AGREGA SOLO AQUÍ ---
+            const user = getAdminUser();
+            showAlert(`¡Bienvenido, ${user.username}! Has iniciado sesión como administrador.`, 'success');
+        } catch (error) {
+            loginError.textContent = 'Credenciales inválidas';
+            loginError.classList.remove('d-none');
+        }
+    });
+
+    // Limpia el mensaje de error al abrir el modal de login
+    document.getElementById('loginModal').addEventListener('show.bs.modal', () => {
+        const loginError = document.getElementById('loginError');
+        loginError.classList.add('d-none');
+        loginError.textContent = '';
+    });
+
+    // Limpia error también al hacer clic en el botón de login
+    document.getElementById('btnLogin').addEventListener('click', () => {
+        const loginError = document.getElementById('loginError');
+        loginError.classList.add('d-none');
+        loginError.textContent = '';
+    });
+
+    // Navegación entre secciones
+    document.querySelectorAll('[data-section]').forEach(link => {
+        link.addEventListener('click', function(e) {
             e.preventDefault();
-            const section = e.target.dataset.section;
+            const section = this.getAttribute('data-section');
             showSection(section);
+
+            // Cargar datos según la sección seleccionada
+            if (section === 'categorias') cargarCategorias();
+            if (section === 'proveedores') cargarProveedores();
+            if (section === 'ordenes-compra') cargarOrdenesCompra();
+            if (section === 'inventario') cargarProductos();
             if (section === 'reportes') {
                 cargarInventarioValorado();
+                cargarReporteMovimientos();
             }
         });
     });
 
+    // Conectar formulario de nuevo producto
     const nuevoProductoForm = document.getElementById('nuevoProductoForm');
     if (nuevoProductoForm) {
         nuevoProductoForm.addEventListener('submit', manejarNuevoProducto);
     }
-    const editarProductoForm = document.getElementById('editarProductoForm');
-    if (editarProductoForm) {
-        editarProductoForm.addEventListener('submit', manejarEditarProducto);
-    }
 
-    document.getElementById('searchNombre').addEventListener('input', filtrarProductos);
-    document.getElementById('searchSKU').addEventListener('input', filtrarProductos);
-    document.getElementById('searchCategoria').addEventListener('change', filtrarProductos);
-
-    cargarCategorias();
+    // Conectar formulario de nueva categoría
     const nuevaCategoriaForm = document.getElementById('nuevaCategoriaForm');
     if (nuevaCategoriaForm) {
         nuevaCategoriaForm.addEventListener('submit', manejarNuevaCategoria);
     }
 
-    const editarCategoriaForm = document.getElementById('editarCategoriaForm');
-    if (editarCategoriaForm) {
-        editarCategoriaForm.addEventListener('submit', manejarEditarCategoria);
-    }
-
-    cargarProveedores();
+    // Conectar formulario de nuevo proveedor
     const nuevoProveedorForm = document.getElementById('nuevoProveedorForm');
     if (nuevoProveedorForm) {
         nuevoProveedorForm.addEventListener('submit', manejarNuevoProveedor);
     }
 
-    const editarProveedorForm = document.getElementById('editarProveedorForm');
-    if (editarProveedorForm) {
-        editarProveedorForm.addEventListener('submit', manejarEditarProveedor);
-    }
-
-    const nuevaOrdenModal = document.getElementById('nuevaOrdenCompraModal');
-    if (nuevaOrdenModal) {
-        nuevaOrdenModal.addEventListener('show.bs.modal', () => {
-            // Llenar proveedores
-            const selectProveedor = nuevaOrdenModal.querySelector('select[name="proveedor"]');
-            if (selectProveedor) {
-                llenarSelectProveedores(selectProveedor);
-            }
-            // Llenar productos en la fila inicial
-            const selectProductoInicial = nuevaOrdenModal.querySelector('.item-producto');
-            if (selectProductoInicial) {
-                llenarSelectProductos(selectProductoInicial);
-            }
-        });
-    }
-
-    document.getElementById('btnAgregarItem').addEventListener('click', () => {
-        const nuevaFila = document.createElement('div');
-        nuevaFila.className = 'row mb-2';
-        nuevaFila.innerHTML = `
-            <div class="col-md-4">
-                <select class="form-select item-producto">
-                    <option value="">Seleccione un producto</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <input type="number" class="form-control item-cantidad" placeholder="Cantidad" min="1">
-            </div>
-            <div class="col-md-3">
-                <input type="number" class="form-control item-precio" placeholder="Precio Unit." step="0.01" min="0">
-            </div>
-            <div class="col-md-2">
-                <button type="button" class="btn btn-danger btn-remove-item">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </div>
-        `;
-        document.getElementById('itemsOrdenContainer').appendChild(nuevaFila);
-
-        // LLENAR EL SELECT DE PRODUCTOS
-        const selectProducto = nuevaFila.querySelector('.item-producto');
-        llenarSelectProductos(selectProducto);
-    });
-
+    // Conectar formulario de nueva orden de compra
     const nuevaOrdenCompraForm = document.getElementById('nuevaOrdenCompraForm');
     if (nuevaOrdenCompraForm) {
         nuevaOrdenCompraForm.addEventListener('submit', manejarNuevaOrdenCompra);
     }
 
-    await cargarOrdenesCompra();
+    // Llenar select de proveedores al abrir el modal de nueva orden de compra
+    const nuevaOrdenCompraModal = document.getElementById('nuevaOrdenCompraModal');
+    if (nuevaOrdenCompraModal) {
+        nuevaOrdenCompraModal.addEventListener('show.bs.modal', () => {
+            const selectProveedor = nuevaOrdenCompraModal.querySelector('select[name="proveedor"]');
+            if (selectProveedor) llenarSelectProveedores(selectProveedor);
 
-    // Asocia el botón
-    document.getElementById('btnGenerarReporte').addEventListener('click', cargarReporteMovimientos);
+            // Llenar todos los selects de productos existentes en los ítems
+            nuevaOrdenCompraModal.querySelectorAll('#itemsOrdenContainer .item-producto').forEach(llenarSelectProductos);
+        });
+    }
+
+    // --- AGREGA ESTO ---
+    const btnGenerarReporte = document.getElementById('btnGenerarReporte');
+    if (btnGenerarReporte) {
+        btnGenerarReporte.addEventListener('click', function(e) {
+            e.preventDefault();
+            console.log('Botón Generar Reporte clickeado');
+            cargarReporteMovimientos();
+        });
+    }
+
+    // Llenar el select de productos
+    async function llenarSelectProductosMovimiento() {
+        const select = document.getElementById('productoMovimiento');
+        if (!select) return;
+        try {
+            const response = await fetch(`${API_URL}/productos`);
+            const productos = await response.json();
+            select.innerHTML = productos.map(p =>
+                `<option value="${p.id}">${p.nombre}</option>`
+            ).join('');
+        } catch (e) {
+            select.innerHTML = '<option value="">Error al cargar productos</option>';
+        }
+    }
+    llenarSelectProductosMovimiento();
+
+    // Manejar el submit del formulario de movimiento
+    const formMovimiento = document.getElementById('formMovimientoInventario');
+    if (formMovimiento) {
+        formMovimiento.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const data = {
+                producto_id: document.getElementById('productoMovimiento').value,
+                tipo: document.getElementById('tipoMovimiento').value,
+                cantidad: document.getElementById('cantidadMovimiento').value,
+                usuario: document.getElementById('usuarioMovimiento').value
+            };
+            try {
+                const response = await fetch(`${API_URL}/movimientos`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (!response.ok) throw new Error('Error al registrar movimiento');
+                showAlert('Movimiento registrado correctamente', 'success');
+                cargarReporteMovimientos(); // Actualiza el reporte
+                formMovimiento.reset();
+            } catch (error) {
+                showAlert('Error al registrar movimiento: ' + error.message, 'danger');
+            }
+        });
+    }
 });
+
+// Exposición de funciones globales necesarias para el HTML inline
+window.loginAdmin = loginAdmin;
+window.updateUIForRole = updateUIForRole;
+window.clearAdminSession = clearAdminSession;
+window.showApp = showApp;
+window.cargarProductos = cargarProductos;
+window.llenarSelectCategorias = llenarSelectCategorias;
+window.showSection = showSection;
+
+function agregarItemOrden() {
+    const container = document.getElementById('itemsOrdenContainer');
+    const row = document.createElement('div');
+    row.className = 'row mb-2';
+
+    row.innerHTML = `
+        <div class="col">
+            <select class="form-select item-producto"></select>
+        </div>
+        <div class="col">
+            <input type="number" class="form-control item-cantidad" min="1" placeholder="Cantidad">
+        </div>
+        <div class="col">
+            <input type="number" class="form-control item-precio" min="0" step="0.01" placeholder="Precio U">
+        </div>
+        <div class="col-auto">
+            <button type="button" class="btn btn-danger" onclick="this.closest('.row').remove()">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    `;
+    container.appendChild(row);
+
+    // Llenar el select de productos de este nuevo item
+    const selectProducto = row.querySelector('.item-producto');
+    llenarSelectProductos(selectProducto);
+}
+window.agregarItemOrden = agregarItemOrden;

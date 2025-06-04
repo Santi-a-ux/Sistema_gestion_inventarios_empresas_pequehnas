@@ -137,4 +137,4 @@ networks:
 volumes:
   postgres_data:
   elasticsearch_data:
-  kibana_data: 
+  kibana_data:

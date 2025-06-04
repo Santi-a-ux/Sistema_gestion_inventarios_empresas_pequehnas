@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: product-system
+data:
+  DATABASE_URL: postgresql://postgres:postgres@db:5432/inventario
+  FLASK_APP: app.py
+  FLASK_ENV: production
+  PYTHONUNBUFFERED: "1"
+  LOG_LEVEL: INFO
+  ELASTICSEARCH_URL: http://elasticsearch:9200
+  LOGSTASH_HOST: logstash
+  LOGSTASH_PORT: "5000"
